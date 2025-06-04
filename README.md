@@ -58,41 +58,32 @@
 
 ## 项目结构
 
-```mermaid
-graph TD
-    A[Compiler] --> B[src/]
-    A --> C[tests/]
-    A --> D[examples/]
-    A --> E[CMakeLists.txt]
-    A --> F[README.md]
-    
-    B --> B1[main.cpp]
-    B --> B2[lexer/]
-    B --> B3[parser/]
-    B --> B4[semantic_analyzer/]
-    B --> B5[code_generator/]
-    B --> B6[utils/]
-    
-    B2 --> B2a[Token.h]
-    B2 --> B2b[Lexer.h]
-    B2 --> B2c[Lexer.cpp]
-    
-    B3 --> B3a[AST.h]
-    B3 --> B3b[Parser.h]
-    B3 --> B3c[Parser.cpp]
-    
-    B4 --> B4a[SymbolTable.h]
-    B4 --> B4b[SemanticAnalyzer.h]
-    B4 --> B4c[SemanticAnalyzer.cpp]
-    
-    B5 --> B5a[CodeGenerator.h]
-    B5 --> B5b[CodeGenerator.cpp]
-    
-    B6 --> B6a[ErrorHandler.h]
-    B6 --> B6b[ErrorHandler.cpp]
-    
-    C --> C1[.gitkeep]
-    D --> D1[.gitkeep]
+```
+Compiler/
+├── src/
+│   ├── main.cpp
+│   ├── lexer/
+│   │   ├── Token.h
+│   │   ├── Lexer.h
+│   │   └── Lexer.cpp
+│   ├── parser/
+│   │   ├── AST.h
+│   │   ├── Parser.h
+│   │   └── Parser.cpp
+│   ├── semantic_analyzer/
+│   │   ├── SymbolTable.h
+│   │   ├── SemanticAnalyzer.h
+│   │   └── SemanticAnalyzer.cpp
+│   ├── code_generator/
+│   │   ├── CodeGenerator.h
+│   │   └── CodeGenerator.cpp
+│   └── utils/
+│       ├── ErrorHandler.h
+│       └── ErrorHandler.cpp
+├── tests/           # 测试用例
+├── examples/        # 示例代码
+├── CMakeLists.txt   # CMake 构建配置
+└── README.md        # 项目说明
 ```
 
 ## 文件和目录说明
