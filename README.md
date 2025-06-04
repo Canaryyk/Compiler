@@ -26,7 +26,6 @@ Compiler/
 │   └── utils/
 │       ├── ErrorHandler.h
 │       └── ErrorHandler.cpp
-├── include/         # (可选)
 ├── tests/           # 测试用例
 ├── examples/        # 示例代码
 ├── CMakeLists.txt   # CMake 构建配置
