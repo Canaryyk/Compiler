@@ -112,8 +112,9 @@ std::unique_ptr<SubprogramNode> Parser::parse_subprogram() {
     if (check(TokenType::VAR)) {
       node->variable_declaration = parse_variable_declaration();
     } else {
-        error_handler_.report_syntax_error(current_token(), "Expected 'var' for variable declarations.");
-        throw std::runtime_error("Missing variable declaration block as per grammar.");
+        // 如果没有 'var' 关键字，则认为没有变量声明部分
+        // 这使得 <变量说明> 部分实际上是可选的
+        node->variable_declaration = nullptr; 
     }
     
     node->compound_statement = parse_compound_statement();

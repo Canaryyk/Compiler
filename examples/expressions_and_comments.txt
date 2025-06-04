@@ -1,0 +1,27 @@
+program ExpressionsDemo;
+// Variable declarations
+var
+    count : integer;
+    price, total : real;
+    initial : char;
+{
+    This is a
+    multi-line block comment.
+    It can span multiple lines.
+}
+begin
+    count := 100 + (50 - 10) / 4; // count should be 100 + 40 / 4 = 100 + 10 = 110
+    price := 2.5 * (count / 55 + 1.0); // price should be 2.5 * (110 / 55 + 1.0) = 2.5 * (2.0 + 1.0) = 2.5 * 3.0 = 7.5
+    initial := 'S';
+    
+    // Test with a char in expression, expecting it to be promoted
+    // According to our semantic rules, char + integer -> integer
+    count := initial + 10; // If 'S' ASCII is 83, count = 83 + 10 = 93
+                          // This tests char to int promotion in expressions
+
+    total := price * count; // total = 7.5 * 93
+
+    // Assign to a real from an integer expression involving a char
+    price := (initial - 'A') + count; // price = (ASCII('S') - ASCII('A')) + 93
+                                  // e.g., (83 - 65) + 93 = 18 + 93 = 111.0
+end. 

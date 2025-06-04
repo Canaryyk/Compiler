@@ -133,10 +133,6 @@ void CodeGenerator::visit(AssignmentStatementNode* node) {
 void CodeGenerator::visit(ArithmeticExpressionNode* node) {
     if (!node->left) return;
 
-    bool needs_paren = false; // Simplistic check, real precedence would be complex
-    // If this node's op has lower precedence than its child's op, child might need parens.
-    // For now, assume left-to-right evaluation without explicit parens from generator side unless in AST.
-
     node->left->accept(this); // Left can be another ArithExpr or Term
     
     if (node->right) { // op is present

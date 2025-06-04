@@ -43,7 +43,7 @@ int SymbolTable::get_current_scope_level() const {
 
 std::shared_ptr<SymbolEntry> SymbolTable::find_in_scopes(const std::string& name) const {
     for (int i = current_scope_level_; i >= 0; --i) {
-        if (i < scoped_tables_.size()) { // Ensure index is valid
+        if (i < static_cast<int>(scoped_tables_.size())) { // Ensure index is valid
             const auto& scope_map = scoped_tables_[i];
             auto it = scope_map.find(name);
             if (it != scope_map.end()) {

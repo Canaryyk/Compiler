@@ -104,29 +104,42 @@ void SemanticAnalyzer::visit(AssignmentStatementNode* node) {
         throw std::runtime_error("Missing expression in assignment statement for '" + node->identifier.lexeme + "'.");
     }
     node->expression->accept(this); 
-    TokenType expr_type = get_expression_type(node->expression.get());
-    TokenType var_type = symbol->data_type;
+    
+    TokenType var_decl_type = symbol->data_type; // 变量声明的类型: INTEGER, REAL, CHAR
+    TokenType expr_eval_type = get_expression_type(node->expression.get()); // 表达式求值后的类型: INTEGER_CONST, REAL_CONST, CHAR
 
     bool compatible = false;
-    if (var_type == expr_type) {
-        compatible = true;
-    } else if (var_type == TokenType::REAL && expr_type == TokenType::INTEGER_CONST) { 
-        compatible = true;
-    } else if (var_type == TokenType::INTEGER && expr_type == TokenType::INTEGER_CONST){
-        compatible = true; // INTEGER var = INTEGER_CONST
-    } else if (var_type == TokenType::REAL && expr_type == TokenType::REAL_CONST){
-        compatible = true; // REAL var = REAL_CONST
-    } else if (var_type == TokenType::CHAR && expr_type == TokenType::CHAR){ // Assuming CHAR literal gives CHAR type
-        compatible = true;
+    if (var_decl_type == TokenType::INTEGER) {
+        if (expr_eval_type == TokenType::INTEGER_CONST || expr_eval_type == TokenType::CHAR) {
+            compatible = true; // INT = INT_CONST or INT = CHAR (char 提升为 int)
+        }
+    } else if (var_decl_type == TokenType::REAL) {
+        if (expr_eval_type == TokenType::REAL_CONST || 
+            expr_eval_type == TokenType::INTEGER_CONST || 
+            expr_eval_type == TokenType::CHAR) {
+            compatible = true; // REAL = REAL_CONST or REAL = INT_CONST or REAL = CHAR (char 提升后变为 int, 再提升为 real)
+        }
+    } else if (var_decl_type == TokenType::CHAR) {
+        if (expr_eval_type == TokenType::CHAR) {
+            compatible = true; // CHAR = CHAR
+        }
+        // 注意: CHAR = INTEGER_CONST (例如 c := 65) 在这里未被允许，如需允许，需添加规则并考虑范围。目前保持严格。
     }
 
     if (!compatible) {
-        std::string var_type_str = Token(var_type, "",0,0).toString(); // Helper to get string name
-        std::string expr_type_str = Token(expr_type, "",0,0).toString();
+        // 使用一个辅助函数将TokenType枚举转换为用户友好的字符串表示
+        auto type_to_string = [](TokenType tt) -> std::string {
+            if (tt == TokenType::INTEGER) return "integer";
+            if (tt == TokenType::REAL) return "real";
+            if (tt == TokenType::CHAR) return "char";
+            if (tt == TokenType::INTEGER_CONST) return "integer_const";
+            if (tt == TokenType::REAL_CONST) return "real_const";
+            return "unknown_type"; // Fallback
+        };
         error_handler_.report_semantic_error(node->assign_op, 
             "Type mismatch in assignment to '" + node->identifier.lexeme + 
-            "'. Expected compatible type for " + var_type_str + 
-            " but got " + expr_type_str);
+            "'. Variable '" + node->identifier.lexeme + "' is type '" + type_to_string(var_decl_type) + 
+            "' but assigned expression is type '" + type_to_string(expr_eval_type) + "'.");
         throw std::runtime_error("Type mismatch in assignment to '" + node->identifier.lexeme + "'.");
     }
 }
@@ -180,36 +193,68 @@ TokenType SemanticAnalyzer::get_expression_type(ArithmeticExpressionNode* expr_n
         }
 
         if (auto* an_expr = dynamic_cast<ArithmeticExpressionNode*>(current_node)) {
-            TokenType left_type = getTypeRecursive(an_expr->left.get());
-            if (an_expr->right) { 
-                TokenType right_type = getTypeRecursive(an_expr->right.get());
-                if ((left_type == TokenType::INTEGER_CONST || left_type == TokenType::REAL_CONST || left_type == TokenType::CHAR) &&
-                    (right_type == TokenType::INTEGER_CONST || right_type == TokenType::REAL_CONST || right_type == TokenType::CHAR)) {
-                    // Simple promotion: if either is REAL, result is REAL.
-                    if (left_type == TokenType::REAL_CONST || right_type == TokenType::REAL_CONST) return TokenType::REAL_CONST;
-                    // If either is INTEGER (and no REAL), result is INTEGER.
-                    if (left_type == TokenType::INTEGER_CONST || right_type == TokenType::INTEGER_CONST) return TokenType::INTEGER_CONST;
-                    // If both are CHAR (and no REAL/INTEGER), result is CHAR (or INT depending on lang spec)
-                    if (left_type == TokenType::CHAR && right_type == TokenType::CHAR) return TokenType::CHAR; // Or INTEGER_CONST for char arithmetic
+            TokenType left_actual_type = getTypeRecursive(an_expr->left.get());
+            if (an_expr->right) { // 二元运算
+                TokenType right_actual_type = getTypeRecursive(an_expr->right.get());
+                Token op_token = an_expr->op;
+
+                // 规则：CHAR类型在算术运算中提升为INTEGER_CONST
+                TokenType eval_left_type = (left_actual_type == TokenType::CHAR) ? TokenType::INTEGER_CONST : left_actual_type;
+                TokenType eval_right_type = (right_actual_type == TokenType::CHAR) ? TokenType::INTEGER_CONST : right_actual_type;
+
+                // 规则：不允许CHAR类型直接参与乘法或除法 (即使提升后)
+                // (或者，如果语言规范允许 char*int，则此检查可以调整)
+                if (op_token.type == TokenType::MULTIPLY || op_token.type == TokenType::DIVIDE) {
+                    if (left_actual_type == TokenType::CHAR || right_actual_type == TokenType::CHAR) {
+                        error_handler_.report_semantic_error(op_token, "CHAR type cannot be directly used with '" + op_token.lexeme + "' operations.");
+                        throw std::runtime_error("Invalid operation with CHAR type for * or /.");
+                    }
                 }
-                error_handler_.report_semantic_error(an_expr->op, "Type mismatch or unsupported operation in arithmetic expression. Left: " + Token(left_type,"",0,0).toString() + ", Right: " + Token(right_type,"",0,0).toString());
+
+                // 核心算术类型检查 (基于提升后的类型)
+                if ((eval_left_type == TokenType::INTEGER_CONST || eval_left_type == TokenType::REAL_CONST) &&
+                    (eval_right_type == TokenType::INTEGER_CONST || eval_right_type == TokenType::REAL_CONST)) {
+                    // 提升规则：REAL 优先
+                    if (eval_left_type == TokenType::REAL_CONST || eval_right_type == TokenType::REAL_CONST) {
+                        return TokenType::REAL_CONST;
+                    }
+                    return TokenType::INTEGER_CONST; // 结果为整数 (可能来自 INT op INT, 或 (promoted CHAR) op INT等)
+                }
+                error_handler_.report_semantic_error(op_token, "Type mismatch for operator '" + op_token.lexeme + 
+                                                     "'. Operands are '" + Token(left_actual_type,"",0,0).toString() + 
+                                                     "' and '" + Token(right_actual_type,"",0,0).toString() + ".");
                 throw std::runtime_error("Type mismatch or unsupported operation in arithmetic expression.");
             }
-            return left_type; 
+            return left_actual_type; // 单一操作数 (例如, <项> 本身)
         } else if (auto* term = dynamic_cast<TermNode*>(current_node)) {
-            TokenType left_type = getTypeRecursive(term->left.get());
-            if (term->right) { 
-                TokenType right_type = getTypeRecursive(term->right.get());
-                 if ((left_type == TokenType::INTEGER_CONST || left_type == TokenType::REAL_CONST || left_type == TokenType::CHAR) &&
-                    (right_type == TokenType::INTEGER_CONST || right_type == TokenType::REAL_CONST || right_type == TokenType::CHAR)) {
-                    if (left_type == TokenType::REAL_CONST || right_type == TokenType::REAL_CONST) return TokenType::REAL_CONST;
-                    if (left_type == TokenType::INTEGER_CONST || right_type == TokenType::INTEGER_CONST) return TokenType::INTEGER_CONST;
-                    if (left_type == TokenType::CHAR && right_type == TokenType::CHAR) return TokenType::CHAR; 
+            TokenType left_actual_type = getTypeRecursive(term->left.get());
+            if (term->right) { // 二元运算
+                TokenType right_actual_type = getTypeRecursive(term->right.get());
+                Token op_token = term->op;
+
+                TokenType eval_left_type = (left_actual_type == TokenType::CHAR) ? TokenType::INTEGER_CONST : left_actual_type;
+                TokenType eval_right_type = (right_actual_type == TokenType::CHAR) ? TokenType::INTEGER_CONST : right_actual_type;
+
+                if (op_token.type == TokenType::MULTIPLY || op_token.type == TokenType::DIVIDE) {
+                    if (left_actual_type == TokenType::CHAR || right_actual_type == TokenType::CHAR) {
+                        error_handler_.report_semantic_error(op_token, "CHAR type cannot be directly used with '" + op_token.lexeme + "' operations.");
+                        throw std::runtime_error("Invalid operation with CHAR type for * or /.");
+                    }
                 }
-                error_handler_.report_semantic_error(term->op, "Type mismatch or unsupported operation in term. Left: " + Token(left_type,"",0,0).toString() + ", Right: " + Token(right_type,"",0,0).toString());
+                
+                if ((eval_left_type == TokenType::INTEGER_CONST || eval_left_type == TokenType::REAL_CONST) &&
+                    (eval_right_type == TokenType::INTEGER_CONST || eval_right_type == TokenType::REAL_CONST)) {
+                    if (eval_left_type == TokenType::REAL_CONST || eval_right_type == TokenType::REAL_CONST) {
+                        return TokenType::REAL_CONST;
+                    }
+                    return TokenType::INTEGER_CONST;
+                }
+                error_handler_.report_semantic_error(op_token, "Type mismatch for operator '" + op_token.lexeme + 
+                                                     "'. Operands are '" + Token(left_actual_type,"",0,0).toString() + 
+                                                     "' and '" + Token(right_actual_type,"",0,0).toString() + ".");
                 throw std::runtime_error("Type mismatch or unsupported operation in term.");
             }
-            return left_type; 
+            return left_actual_type; // 单一操作数 (例如, <因子> 本身)
         } else if (auto* factor = dynamic_cast<FactorNode*>(current_node)) {
             return getTypeRecursive(factor->content.get()); 
         } else if (auto* var = dynamic_cast<VariableNode*>(current_node)) {

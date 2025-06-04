@@ -209,12 +209,12 @@ char Lexer::peek() const {
 }
 
 char Lexer::peek_next() const {
-    if (current_pos_ + 1 >= source_code_.length()) return '\0';
+    if (static_cast<int>(current_pos_ + 1) >= static_cast<int>(source_code_.length())) return '\0';
     return source_code_[current_pos_ + 1];
 }
 
 bool Lexer::is_at_end() const {
-    return current_pos_ >= source_code_.length();
+    return static_cast<int>(current_pos_) >= static_cast<int>(source_code_.length());
 }
 
 bool Lexer::match(char expected) {
