@@ -8,52 +8,106 @@
 
 #### 程序定义
 ```
-<程序> → program <标识符> <分程序> .
-<分程序> → <变量说明> <复合语句>
+<Program> → program <Identifier> <Block> .
+对应中文产生式: <程序> → program <标识符> <分程序> .
+
+<Block> → <VarDeclarations> <CompoundStatement>
+对应中文产生式: <分程序> → <变量说明> <复合语句>
 ```
 
 #### 语句定义
 ```
-<变量说明> → var <标识符表> : <类型> ;
-<标识符表> → <标识符> , <标识符表> | <标识符> 
-<复合语句> → begin <语句表> end
-<语句表> → <赋值语句> <语句表后缀>
-<语句表后缀> → ; <语句表> | ε  
-<赋值语句> → <标识符> := <算术表达式>
+<VarDeclarations> → var <IdentifierList> : <Type> ;
+对应中文产生式: <变量说明> → var <标识符表> : <类型> ;
+
+<IdentifierList> → <Identifier> | <Identifier> , <IdentifierList>
+对应中文产生式: <标识符表> → <标识符> | <标识符> , <标识符表>
+
+<CompoundStatement> → begin <StatementList> end
+对应中文产生式: <复合语句> → begin <语句表> end
+
+<StatementList> → <Statement> <StatementListTail>
+对应中文产生式: <语句表> → <语句> <语句表后缀>
+
+<StatementListTail> → ; <StatementList> | ε
+对应中文产生式: <语句表后缀> → ; <语句表> | ε
+
+<Statement> → <AssignmentStatement> | <IfStatement> | <WhileStatement> | <CompoundStatement> | ε
+对应中文产生式: <语句> → <赋值语句> | <条件语句> | <循环语句> | <复合语句> | ε
+
+<AssignmentStatement> → <Identifier> := <Expression>
+对应中文产生式: <赋值语句> → <标识符> := <算术表达式>
+
+<IfStatement> → if <Condition> then <Statement> | if <Condition> then <Statement> else <Statement>
+对应中文产生式: <条件语句> → if <条件表达式> then <语句> | if <条件表达式> then <语句> else <语句>
+
+<WhileStatement> → while <Condition> do <Statement>
+对应中文产生式: <循环语句> → while <条件表达式> do <语句>
+```
+#### 条件表达式定义
+```
+<Condition> → <Expression> <RelationalOp> <Expression>
+对应中文产生式: <条件表达式> → <算术表达式> <关系运算符> <算术表达式>
+
+<RelationalOp> → = | <> | < | <= | > | >=
+对应中文产生式: <关系运算符> → = | <> | < | <= | > | >=
 ```
 
 #### 算术表达式定义
 ```
-<算术表达式> → <项> <算术表达式后缀>
-<算术表达式后缀> → ω_0 <项> <算术表达式后缀> | ε  
-<项> → <因子> <项后缀>
-<项后缀> → ω_1 <因子> <项后缀> | ε  
-<因子> → <算术量> | ( <算术表达式> )  
-<算术量> → <标识符> | <常数>  
+<Expression> → <Term> <ExpressionTail>
+对应中文产生式: <算术表达式> → <项> <算术表达式后缀>
+
+<ExpressionTail> → + <Term> <ExpressionTail> | - <Term> <ExpressionTail> | ε
+对应中文产生式: <算术表达式后缀> → + <项> <算术表达式后缀> | - <项> <算术表达式后缀> | ε
+
+<Term> → <Factor> <TermTail>
+对应中文产生式: <项> → <因子> <项后缀>
+
+<TermTail> → * <Factor> <TermTail> | / <Factor> <TermTail> | ε
+对应中文产生式: <项后缀> → * <因子> <项后缀> | / <因子> <项后缀> | ε
+
+<Factor> → <Value> | ( <Expression> )
+对应中文产生式: <因子> → <算术量> | ( <算术表达式> )
+
+<Value> → <Identifier> | <Constant>
+对应中文产生式: <算术量> → <标识符> | <常数>
 ```
-其中：
-- ω0 为 + 或 -
-- ω1 为 * 或 /
 
 #### 类型定义
 ```
-<类型> → integer | real | char 
+<Type> → integer | real | char
+对应中文产生式: <类型> → integer | real | char
 ```
 
 #### 单词集定义
 ```
-<标识符> → <字母> <标识符后缀>
-<标识符后缀> → <数字> <标识符后缀> | <字母> <标识符后缀> | ε
-<常数> → <整数> | <实数>  
-<整数> → <数字> <整数后缀>
-<整数后缀> → <数字> <整数后缀> | ε
-<实数> → <整数> . <整数>  
+<Identifier> → <Letter> <IdentifierTail>
+对应中文产生式: <标识符> → <字母> <标识符后缀>
+
+<IdentifierTail> → <Digit> <IdentifierTail> | <Letter> <IdentifierTail> | ε
+对应中文产生式: <标识符后缀> → <数字> <标识符后缀> | <字母> <标识符后缀> | ε
+
+<Constant> → <Integer> | <Real>
+对应中文产生式: <常数> → <整数> | <实数>
+
+<Integer> → <Digit> <IntegerTail>
+对应中文产生式: <整数> → <数字> <整数后缀>
+
+<IntegerTail> → <Digit> <IntegerTail> | ε
+对应中文产生式: <整数后缀> → <数字> <整数后缀> | ε
+
+<Real> → <Integer> . <Integer>
+对应中文产生式: <实数> → <整数> . <整数>
 ```
 
 #### 字符集定义
 ```
-<字母> → A | B | C | ... | Z | a | b | c | ... | z  
-<数字> → 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9  
+<Letter> → A | B | ... | Z | a | b | ... | z
+对应中文产生式: <字母> → A | B | ... | Z | a | b | ... | z
+
+<Digit> → 0 | 1 | ... | 9
+对应中文产生式: <数字> → 0 | 1 | ... | 9
 ```
 
 ## 项目结构
@@ -185,3 +239,4 @@ Compiler/
         *   这些示例可以帮助用户理解编译器的功能和用法，也可以作为测试编译器的实际输入。
     *   **应包含代码**:
         *   符合编译器所支持语言语法的源代码文件（例如 `.txt`, `.lang`, `.src` 等，取决于编译器定义）。
+
