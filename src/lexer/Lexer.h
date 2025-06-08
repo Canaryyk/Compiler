@@ -2,38 +2,27 @@
 #define LEXER_H
 
 #include <string>
-#include <vector>
-#include <unordered_map>
+#include "../semantic_analyzer/SymbolTable.h"
 #include "Token.h"
-#include "../utils/ErrorHandler.h"
+#include <vector>
 
 class Lexer {
 public:
-    Lexer(std::string source, ErrorHandler& errorHandler);
-    std::vector<Token> tokenize();
+    Lexer(const std::string& source, SymbolTable& table);
+    Token get_next_token();
+    const std::vector<Token>& get_all_tokens() const;
 
 private:
-    std::string source_code_;
-    ErrorHandler& error_handler_;
-    int current_pos_ = 0;
-    int line_ = 1;
-    int column_ = 1;
+    std::string source_code;
+    size_t current_pos;
+    SymbolTable& symbol_table;
+    std::vector<Token> tokens;
 
-    char advance();
-    char peek() const;
-    char peek_next() const;
-    bool is_at_end() const;
-    bool match(char expected);
-
-    Token make_token(TokenType type, const std::string& lexeme);
-    Token make_token(TokenType type, const std::string& lexeme, const std::variant<int, double, std::string>& value);
-    Token identifier();
-    Token number();
-    Token string_literal(); // 如果文法支持字符串字面量
-    void skip_whitespace_and_comments(); // 跳过空白和注释
-
-    // 根据文法添加关键字映射
-    std::unordered_map<std::string, TokenType> keywords_;
+    void skip_whitespace();
+    Token make_token(TokenCategory category, int index);
+    Token handle_identifier();
+    Token handle_number();
+    Token handle_operator();
 };
 
-#endif //LEXER_H 
+#endif // LEXER_H

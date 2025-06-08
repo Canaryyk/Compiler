@@ -14,7 +14,6 @@
                 "${workspaceFolder}/src/lexer/*.cpp",
                 "${workspaceFolder}/src/parser/*.cpp",
                 "${workspaceFolder}/src/semantic_analyzer/*.cpp",
-                "${workspaceFolder}/src/code_generator/*.cpp",
                 "${workspaceFolder}/src/utils/*.cpp",
                 "-o",
                 "${workspaceFolder}/build/compiler_app.exe"

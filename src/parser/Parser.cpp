@@ -1,313 +1,285 @@
 #include "Parser.h"
-#include <stdexcept> // For std::runtime_error
-// #include <iostream>  // For error reporting (temporary) - Replaced by ErrorHandler
-#include "../utils/ErrorHandler.h"
+#include <iostream>
+#include <stdexcept>
 
-Parser::Parser(std::vector<Token> tokens, ErrorHandler& errorHandler)
-    : tokens_(std::move(tokens)), error_handler_(errorHandler) {
-    if (tokens_.empty() || tokens_.back().type != TokenType::END_OF_FILE) {
-        // This case should ideally be an internal error or assertion,
-        // as Lexer is expected to always provide an EOF token.
-        // error_handler_.report(Error::Type::GENERAL, "Token stream missing EOF.");
-        // For now, we assume Lexer behaves correctly.
-    }
+Parser::Parser(Lexer& lexer, SymbolTable& table)
+    : lexer(lexer), table(table), temp_counter(0), label_counter(0), current_address(0) {
+    advance();
 }
 
-std::unique_ptr<ProgramNode> Parser::parse() {
-    try {
-        return parse_program();
-    } catch (const std::runtime_error& /*e*/) {
-        // Errors are now reported via ErrorHandler before throwing.
-        // The exception is mainly for unwinding the parsing stack.
-        // No need to print e.what() as it's usually a generic message from here.
-        return nullptr; // Parsing failed
-    }
+void Parser::parse() {
+    program();
 }
 
-// --- 辅助方法实现 ---
-const Token& Parser::current_token() const {
-    if (is_at_end()) return tokens_.back(); 
-    return tokens_[current_token_index_];
+const std::vector<Quadruple>& Parser::get_quadruples() const {
+    return quadruples;
 }
 
-const Token& Parser::peek_token(int offset) const {
-    if (current_token_index_ + offset >= tokens_.size()) {
-        return tokens_.back(); 
-    }
-    return tokens_[current_token_index_ + offset];
+void Parser::advance() {
+    current_token = lexer.get_next_token();
 }
 
-Token Parser::consume_token() {
-    if (!is_at_end()) {
-        Token consumed = tokens_[current_token_index_];
-        current_token_index_++;
-        return consumed;
-    }
-    return tokens_.back(); 
-}
-
-bool Parser::match(TokenType type) {
-    if (check(type)) {
-        consume_token();
-        return true;
-    }
-    return false;
-}
-
-bool Parser::check(TokenType type) const {
-    if (is_at_end()) return type == TokenType::END_OF_FILE;
-    return current_token().type == type;
-}
-
-bool Parser::check_next(TokenType type) const {
-    if (is_at_end()) return false;
-    if (current_token_index_ + 1 >= tokens_.size()) return type == TokenType::END_OF_FILE;
-    return peek_token().type == type;
-}
-
-Token Parser::expect(TokenType type, const std::string& error_message) {
-    if (check(type)) {
-        return consume_token();
-    }
-    error_handler_.report_syntax_error(current_token(), error_message + ". Got '" + current_token().lexeme + "'");
-    throw std::runtime_error("Syntax expectation failed: " + error_message); // Exception to unwind stack
-}
-
-bool Parser::is_at_end() const {
-    return current_token_index_ >= tokens_.size() -1 ;
-}
-
-void Parser::report_error(const Token& token, const std::string& message) {
-    error_handler_.report_syntax_error(token, message);
-    // No longer throws from here directly; expect() will throw after reporting.
-    // If a non-fatal error that allows recovery is reported, synchronize() should be called.
-}
-
-// --- 递归下降解析方法实现 (骨架) ---
-
-// <程序> -> program <标识符> <分程序>.
-std::unique_ptr<ProgramNode> Parser::parse_program() {
-    auto node = std::make_unique<ProgramNode>();
-    node->line_number = current_token().line_number;
-    node->column_number = current_token().column_number;
-
-    node->program_keyword = expect(TokenType::PROGRAM, "Expected 'program' keyword");
-    node->identifier = expect(TokenType::IDENTIFIER, "Expected program name (identifier)");
-    node->subprogram = parse_subprogram();
-    node->dot = expect(TokenType::DOT, "Expected '.' at the end of the program");
-    
-    if (!check(TokenType::END_OF_FILE)) {
-        report_error(current_token(), "Unexpected tokens after program end.");
-        // Potentially throw or synchronize if strictness is required.
-    }
-    return node;
-}
-
-// <分程序> -> <变量说明> <复合语句>
-std::unique_ptr<SubprogramNode> Parser::parse_subprogram() {
-    auto node = std::make_unique<SubprogramNode>();
-    node->line_number = current_token().line_number;
-    node->column_number = current_token().column_number;
-
-    if (check(TokenType::VAR)) {
-      node->variable_declaration = parse_variable_declaration();
+void Parser::match(TokenCategory category) {
+    if (current_token.category == category) {
+        advance();
     } else {
-        // 如果没有 'var' 关键字，则认为没有变量声明部分
-        // 这使得 <变量说明> 部分实际上是可选的
-        node->variable_declaration = nullptr; 
+        throw std::runtime_error("Syntax error: Unexpected token.");
     }
-    
-    node->compound_statement = parse_compound_statement();
-    return node;
 }
 
-// <变量说明> -> var <标识符表> : <类型> ;
-std::unique_ptr<VariableDeclarationNode> Parser::parse_variable_declaration() {
-    auto node = std::make_unique<VariableDeclarationNode>();
-    node->line_number = current_token().line_number;
-    node->column_number = current_token().column_number;
-
-    node->var_keyword = expect(TokenType::VAR, "Expected 'var' keyword");
-    node->identifier_list = parse_identifier_list();
-    node->colon = expect(TokenType::COLON, "Expected ':' after identifier list");
-    node->type = parse_type();
-    node->semicolon = expect(TokenType::SEMICOLON, "Expected ';' after type in variable declaration");
-    return node;
+Operand Parser::new_temp() {
+    std::string temp_name = "t" + std::to_string(temp_counter);
+    int index = temp_counter;
+    temp_counter++;
+    return Operand{Operand::Type::TEMPORARY, index, temp_name};
 }
 
-// <标识符表> -> <标识符> | <标识符> , <标识符表>
-std::unique_ptr<IdentifierListNode> Parser::parse_identifier_list() {
-    auto node = std::make_unique<IdentifierListNode>();
-    node->line_number = current_token().line_number;
-    node->column_number = current_token().column_number;
+void Parser::emit(OpCode op, const Operand& arg1, const Operand& arg2, const Operand& result) {
+    quadruples.push_back({op, arg1, arg2, result});
+}
 
-    node->identifiers.push_back(expect(TokenType::IDENTIFIER, "Expected an identifier"));
-    while (match(TokenType::COMMA)) {
-        node->identifiers.push_back(expect(TokenType::IDENTIFIER, "Expected an identifier after comma"));
+void Parser::backpatch(int quad_index, int target_label) {
+    quadruples[quad_index].result = {Operand::Type::LABEL, target_label, "L" + std::to_string(target_label)};
+}
+
+void Parser::program() {
+    if (table.get_keyword_table()[current_token.index - 1] != "program") 
+        throw std::runtime_error("Syntax error: Expected 'program'.");
+    match(TokenCategory::KEYWORD);
+    match(TokenCategory::IDENTIFIER);
+    block();
+    if (table.get_operator_table()[current_token.index - 1] != ".")
+        throw std::runtime_error("Syntax error: Expected '.'.");
+    match(TokenCategory::OPERATOR);
+}
+
+void Parser::block() {
+    table.enter_scope();
+    if (current_token.category == TokenCategory::KEYWORD && table.get_keyword_table()[current_token.index - 1] == "var") {
+        var_declarations();
     }
-    return node;
+    compound_statement();
+    table.exit_scope();
 }
 
-// <类型> -> integer | real | char
-std::unique_ptr<TypeNode> Parser::parse_type() {
-    auto node = std::make_unique<TypeNode>();
-    node->line_number = current_token().line_number;
-    node->column_number = current_token().column_number;
-
-    if (check(TokenType::INTEGER) || check(TokenType::REAL) || check(TokenType::CHAR)) {
-        node->type_token = consume_token();
-    } else {
-        error_handler_.report_syntax_error(current_token(), "Expected a type (integer, real, or char)");
-        throw std::runtime_error("Invalid type specified.");
-    }
-    return node;
-}
-
-// <复合语句> -> begin <语句表> end
-std::unique_ptr<CompoundStatementNode> Parser::parse_compound_statement() {
-    auto node = std::make_unique<CompoundStatementNode>();
-    node->line_number = current_token().line_number;
-    node->column_number = current_token().column_number;
-
-    node->begin_keyword = expect(TokenType::BEGIN, "Expected 'begin' keyword");
- 
-    if (check(TokenType::IDENTIFIER)) { 
-        node->statement_list = parse_statement_list();
-    } else if (check(TokenType::END)) { 
-        node->statement_list = std::make_unique<StatementListNode>(); 
-        // Note:文法 <语句表> -> <赋值语句> ; <语句表> | <赋值语句> 不允许空语句表。
-        // 若要允许空 begin...end, 文法需改为 <语句表> -> <赋值语句> ; <语句表> | <赋值语句> | epsilon
-        // 暂时允许空语句表，以便更灵活，但这偏离了严格的文法。
-        // error_handler_.report_syntax_error(node->begin_keyword, "Empty statement list (between begin/end) is not strictly allowed by the current grammar for <语句表>.");
-    } else {
-         error_handler_.report_syntax_error(current_token(), "Expected statements (identifier) or 'end' after 'begin'.");
-         throw std::runtime_error("Invalid start of statement list or missing 'end'.");
-    }
-
-    node->end_keyword = expect(TokenType::END, "Expected 'end' keyword");
-    return node;
-}
-
-// <语句表> -> <赋值语句> ; <语句表> | <赋值语句>
-// 改写为: <语句表> -> <赋值语句> { ; <赋值语句> }*
-std::unique_ptr<StatementListNode> Parser::parse_statement_list() {
-    auto node = std::make_unique<StatementListNode>();
-    node->line_number = current_token().line_number;
-    node->column_number = current_token().column_number;
-
-    node->statements.push_back(parse_assignment_statement());
-
-    while (match(TokenType::SEMICOLON)) {
-        // 如果分号后是END，则认为是合法的末尾分号 (常见情况)
-        if (check(TokenType::END)) {
-            break; 
-        }
-        // 否则，分号后必须是另一个赋值语句
-        if (check(TokenType::IDENTIFIER)) {
-            node->statements.push_back(parse_assignment_statement());
+void Parser::var_declarations() {
+    match(TokenCategory::KEYWORD); // var
+    while (current_token.category == TokenCategory::IDENTIFIER) {
+        std::vector<Token> id_list = identifier_list();
+        if (table.get_operator_table()[current_token.index-1] != ":") throw std::runtime_error("Syntax error: Expected ':'.");
+        match(TokenCategory::OPERATOR);
+        
+        TypeEntry* var_type = new TypeEntry();
+        std::string type_name = table.get_keyword_table()[current_token.index - 1];
+        if (type_name == "integer") {
+            var_type->kind = TypeKind::SIMPLE;
+            var_type->size = 4;
+        } else if (type_name == "real") {
+            var_type->kind = TypeKind::SIMPLE;
+            var_type->size = 8;
         } else {
-             error_handler_.report_syntax_error(current_token(), "Expected an assignment statement (identifier) after ';' or 'end' keyword.");
-             throw std::runtime_error("Missing statement after semicolon in statement list, or unexpected token.");
+            delete var_type;
+            throw std::runtime_error("Unsupported variable type: " + type_name);
+        }
+        table.add_type(var_type);
+        match(TokenCategory::KEYWORD);
+        if (table.get_operator_table()[current_token.index-1] != ";") throw std::runtime_error("Syntax error: Expected ';'.");
+        match(TokenCategory::OPERATOR);
+
+        for (const auto& id_token : id_list) {
+            SymbolEntry entry;
+            entry.name = table.get_simple_identifier_table()[id_token.index - 1];
+            entry.category = SymbolCategory::VARIABLE;
+            entry.type = var_type;
+            entry.address = current_address;
+            entry.scope_level = table.get_current_scope_level();
+            if (!table.add_symbol(entry)) {
+                throw std::runtime_error("Semantic error: Redefinition of symbol '" + entry.name + "'.");
+            }
+            current_address += var_type->size;
         }
     }
-    return node;
 }
 
-// <赋值语句> -> <标识符> := <算术表达式>
-std::unique_ptr<AssignmentStatementNode> Parser::parse_assignment_statement() {
-    auto node = std::make_unique<AssignmentStatementNode>();
-    node->line_number = current_token().line_number;
-    node->column_number = current_token().column_number;
-
-    node->identifier = expect(TokenType::IDENTIFIER, "Expected identifier in assignment statement");
-    node->assign_op = expect(TokenType::ASSIGN, "Expected ':=' in assignment statement");
-    node->expression = parse_arithmetic_expression();
-    return node;
-}
-
-
-std::unique_ptr<ArithmeticExpressionNode> Parser::parse_arithmetic_expression() {
-    auto left_term_node = parse_term();
-    auto current_expr_node = std::make_unique<ArithmeticExpressionNode>(std::move(left_term_node));
-    current_expr_node->line_number = current_token().line_number; 
-    current_expr_node->column_number = current_token().column_number;
-
-    while (check(TokenType::PLUS) || check(TokenType::MINUS)) {
-        Token op = consume_token();
-        auto right_term_node = parse_term();
-        current_expr_node = std::make_unique<ArithmeticExpressionNode>(std::move(current_expr_node), op, std::move(right_term_node));
-        current_expr_node->line_number = op.line_number;
-        current_expr_node->column_number = op.column_number;
+std::vector<Token> Parser::identifier_list() {
+    std::vector<Token> id_list;
+    id_list.push_back(current_token);
+    match(TokenCategory::IDENTIFIER);
+    while (current_token.category == TokenCategory::OPERATOR && table.get_operator_table()[current_token.index - 1] == ",") {
+        advance();
+        id_list.push_back(current_token);
+        match(TokenCategory::IDENTIFIER);
     }
-    return current_expr_node;
+    return id_list;
 }
 
-std::unique_ptr<TermNode> Parser::parse_term() {
-    auto left_factor_node = parse_factor();
-    auto current_term_node = std::make_unique<TermNode>(std::move(left_factor_node));
-    current_term_node->line_number = current_token().line_number;
-    current_term_node->column_number = current_token().column_number;
+void Parser::compound_statement() {
+    if (table.get_keyword_table()[current_token.index - 1] != "begin") throw std::runtime_error("Syntax error: Expected 'begin'.");
+    match(TokenCategory::KEYWORD);
+    statement_list();
+    if (table.get_keyword_table()[current_token.index - 1] != "end") throw std::runtime_error("Syntax error: Expected 'end'.");
+    match(TokenCategory::KEYWORD);
+}
 
-    while (check(TokenType::MULTIPLY) || check(TokenType::DIVIDE)) {
-        Token op = consume_token();
-        auto right_factor_node = parse_factor();
-        current_term_node = std::make_unique<TermNode>(std::move(current_term_node), op, std::move(right_factor_node));
-        current_term_node->line_number = op.line_number;
-        current_term_node->column_number = op.column_number;
+void Parser::statement_list() {
+    statement();
+    while (current_token.category == TokenCategory::OPERATOR && table.get_operator_table()[current_token.index - 1] == ";") {
+        advance();
+        if (current_token.category == TokenCategory::KEYWORD && table.get_keyword_table()[current_token.index -1] == "end") {
+            break;
+        }
+        statement();
     }
-    return current_term_node;
 }
 
-std::unique_ptr<FactorNode> Parser::parse_factor() {
-    Token first_token = current_token();
+void Parser::statement() {
+    if (current_token.category == TokenCategory::IDENTIFIER) {
+        assignment_statement();
+    } else if (current_token.category == TokenCategory::KEYWORD) {
+        const auto& keyword = table.get_keyword_table()[current_token.index - 1];
+        if (keyword == "if") if_statement();
+        else if (keyword == "while") while_statement();
+        else if (keyword == "begin") compound_statement();
+        // 'end' is handled by statement_list and compound_statement, so we don't need a special case for it here.
+        // If it's another keyword, it's a syntax error, but that will be caught by the calling function.
+    }
+}
 
-    if (check(TokenType::IDENTIFIER)) {
-        Token id_token = consume_token();
-        auto var_node = std::make_unique<VariableNode>(id_token);
-        var_node->line_number = id_token.line_number;
-        var_node->column_number = id_token.column_number;
-        auto factor_node = std::make_unique<FactorNode>(std::move(var_node));
-        factor_node->line_number = id_token.line_number;
-        factor_node->column_number = id_token.column_number;
-        return factor_node;
-    } else if (check(TokenType::INTEGER_CONST) || check(TokenType::REAL_CONST)) {
-        Token const_token = consume_token();
-        auto const_node = std::make_unique<ConstantNode>(const_token);
-        const_node->line_number = const_token.line_number;
-        const_node->column_number = const_token.column_number;
-        auto factor_node = std::make_unique<FactorNode>(std::move(const_node));
-        factor_node->line_number = const_token.line_number;
-        factor_node->column_number = const_token.column_number;
-        return factor_node;
-    } else if (match(TokenType::LPAREN)) {
-        auto expr_node = parse_arithmetic_expression();
-        expect(TokenType::RPAREN, "Expected ')' after expression in factor");
-        auto factor_node = std::make_unique<FactorNode>(std::move(expr_node), true );
-        factor_node->line_number = first_token.line_number; 
-        factor_node->column_number = first_token.column_number;
-        return factor_node;
+void Parser::assignment_statement() {
+    const auto& id_name = table.get_simple_identifier_table()[current_token.index - 1];
+    SymbolEntry* left_entry = table.find_symbol(id_name);
+    if (!left_entry) throw std::runtime_error("Semantic error: Undeclared identifier '" + id_name + "'.");
+    
+    Operand left = {Operand::Type::IDENTIFIER, left_entry->address, left_entry->name};
+    match(TokenCategory::IDENTIFIER);
+    
+    if (table.get_operator_table()[current_token.index - 1] != ":=") throw std::runtime_error("Syntax error: Expected ':='.");
+    match(TokenCategory::OPERATOR);
+    
+    Operand right = expression();
+    emit(OpCode::ASSIGN, right, {}, left);
+}
+
+void Parser::if_statement() {
+    match(TokenCategory::KEYWORD);
+    Operand cond = condition();
+    if (table.get_keyword_table()[current_token.index - 1] != "then") throw std::runtime_error("Syntax error: Expected 'then'.");
+    match(TokenCategory::KEYWORD);
+
+    int false_quad_idx = quadruples.size();
+    emit(OpCode::JUMP_IF_FALSE, cond, {}, {});
+
+    statement();
+
+    if (current_token.category == TokenCategory::KEYWORD && table.get_keyword_table()[current_token.index - 1] == "else") {
+        advance();
+        int exit_quad_idx = quadruples.size();
+        emit(OpCode::JUMP, {}, {}, {});
+        backpatch(false_quad_idx, quadruples.size());
+        statement();
+        backpatch(exit_quad_idx, quadruples.size());
     } else {
-        error_handler_.report_syntax_error(current_token(), "Expected identifier, constant, or '(' in factor.");
-        throw std::runtime_error("Invalid factor.");
+        backpatch(false_quad_idx, quadruples.size());
     }
 }
 
-void Parser::synchronize() {
-    consume_token(); 
-    while (!is_at_end()) {
-        if (current_token().type == TokenType::SEMICOLON) {
-            consume_token(); 
-            return;
+void Parser::while_statement() {
+    match(TokenCategory::KEYWORD);
+    int loop_start_addr = quadruples.size();
+    Operand cond = condition();
+    if (table.get_keyword_table()[current_token.index - 1] != "do") throw std::runtime_error("Syntax error: Expected 'do'.");
+    match(TokenCategory::KEYWORD);
+    
+    int false_quad_idx = quadruples.size();
+    emit(OpCode::JUMP_IF_FALSE, cond, {}, {});
+
+    statement();
+    
+    emit(OpCode::JUMP, {}, {}, {Operand::Type::LABEL, loop_start_addr, "L" + std::to_string(loop_start_addr)});
+    backpatch(false_quad_idx, quadruples.size());
+}
+
+Operand Parser::expression() {
+    Operand left = term();
+    while (current_token.category == TokenCategory::OPERATOR) {
+        const auto& op_str = table.get_operator_table()[current_token.index - 1];
+        if (op_str == "+" || op_str == "-") {
+            OpCode op = (op_str == "+") ? OpCode::ADD : OpCode::SUB;
+            advance();
+            Operand right = term();
+            Operand result = new_temp();
+            emit(op, left, right, result);
+            left = result;
+        } else {
+            break;
         }
-        switch (current_token().type) {
-            case TokenType::VAR:
-            case TokenType::BEGIN:
-            case TokenType::END:
-            case TokenType::PROGRAM: 
-                return;
-            default:
-                break; 
-        }
-        consume_token();
     }
-} 
+    return left;
+}
+
+Operand Parser::term() {
+    Operand left = factor();
+    while (current_token.category == TokenCategory::OPERATOR) {
+        const auto& op_str = table.get_operator_table()[current_token.index - 1];
+        if (op_str == "*" || op_str == "/") {
+            OpCode op = (op_str == "*") ? OpCode::MUL : OpCode::DIV;
+            advance();
+            Operand right = factor();
+            Operand result = new_temp();
+            emit(op, left, right, result);
+            left = result;
+        } else {
+            break;
+        }
+    }
+    return left;
+}
+
+Operand Parser::factor() {
+    Operand op;
+    if (current_token.category == TokenCategory::IDENTIFIER) {
+        const auto& id_name = table.get_simple_identifier_table()[current_token.index - 1];
+        SymbolEntry* entry = table.find_symbol(id_name);
+        if (!entry) throw std::runtime_error("Semantic error: Undeclared identifier '" + id_name + "'.");
+        op = {Operand::Type::IDENTIFIER, entry->address, entry->name};
+        advance();
+    } else if (current_token.category == TokenCategory::CONSTANT) {
+        op = {Operand::Type::CONSTANT, current_token.index - 1};
+        op.name = std::to_string(static_cast<int>(table.get_constant_table()[op.index]));
+        advance();
+    } else if (current_token.category == TokenCategory::OPERATOR && table.get_operator_table()[current_token.index - 1] == "(") {
+        advance();
+        op = expression();
+        if (table.get_operator_table()[current_token.index - 1] != ")") throw std::runtime_error("Syntax error: Expected ')'.");
+        advance();
+    } else {
+        throw std::runtime_error("Syntax error in factor.");
+    }
+    return op;
+}
+
+Operand Parser::condition() {
+    Operand left = expression();
+    OpCode op = relational_op();
+    Operand right = expression();
+    Operand result = new_temp();
+    emit(op, left, right, result);
+    return result;
+}
+
+OpCode Parser::relational_op() {
+    if (current_token.category == TokenCategory::OPERATOR) {
+        const auto& op_str = table.get_operator_table()[current_token.index - 1];
+        OpCode op;
+        if (op_str == "=") op = OpCode::EQ;
+        else if (op_str == "<>") op = OpCode::NE;
+        else if (op_str == "<") op = OpCode::LT;
+        else if (op_str == "<=") op = OpCode::LE;
+        else if (op_str == ">") op = OpCode::GT;
+        else if (op_str == ">=") op = OpCode::GE;
+        else throw std::runtime_error("Invalid relational operator.");
+        advance();
+        return op;
+    }
+    throw std::runtime_error("Expected relational operator.");
+}
