@@ -24,6 +24,7 @@
 
 <VarDeclaration>    ::= <IdentifierList> ':' <Type> ';'
 // <变量声明>       ::= <标识符表> ':' <类型> ';'
+// 语义动作:        { 将变量信息登录到符号表 }
 
 <IdentifierList>    ::= <Identifier> { ',' <Identifier> }
 // <标识符表>       ::= <标识符> { ',' <标识符> }
@@ -46,21 +47,32 @@
 
 <AssignmentStatement> ::= <Identifier> ':=' <Expression>
 // <赋值语句>       ::= <标识符> ':=' <表达式>
+// 语义动作:        { 生成 (ASSIGN, Expression.result, -, Identifier.place) 四元式 }
 
 <IfStatement>       ::= 'if' <Condition> 'then' <Statement> [ 'else' <Statement> ]
 // <条件语句>       ::= 'if' <条件> 'then' <语句> [ 'else' <语句> ]
+// 语义动作:        { 1. 在 <Condition> 后, 生成带假出口的跳转指令 JPF。
+//                   2. 在 then <Statement> 后, 若有 else, 生成无条件跳转指令 JMP, 并回填 JPF 的目标到 else 子句。
+//                   3. 在整个语句结束后, 回填所有未确定的跳转目标地址。 }
 
 <WhileStatement>    ::= 'while' <Condition> 'do' <Statement>
 // <循环语句>       ::= 'while' <条件> 'do' <语句>
+// 语义动作:        { 1. 记录循环开始地址。
+//                   2. 在 <Condition> 后, 生成带假出口的跳转指令 JPF。
+//                   3. 在 <Statement> 后, 生成无条件跳转指令跳回循环开始处。
+//                   4. 回填 JPF 的目标地址到循环结束之后。 }
 
 <Condition>         ::= <Expression> <RelationalOp> <Expression>
 // <条件>            ::= <表达式> <关系运算符> <表达式>
+// 语义动作:        { t = new_temp(); 生成 (RelationalOp, E1.result, E2.result, t); Condition.result = t }
 
 <Expression>        ::= <Term> { ( '+' | '-' ) <Term> }
 // <表达式>         ::= <项> { ( '+' | '-' ) <项> }
+// 语义动作:        { 对于每个 (+|-) <Term>, t = new_temp(); 生成 (op, E.result, T.result, t); E.result = t }
 
 <Term>              ::= <Factor> { ( '*' | '/' ) <Factor> }
 // <项>              ::= <因子> { ( '*' | '/' ) <因子> }
+// 语义动作:        { 对于每个 (*|/) <Factor>, t = new_temp(); 生成 (op, T.result, F.result, t); T.result = t }
 
 <Factor>            ::= <Identifier> | <Constant> | '(' <Expression> ')'
 // <因子>            ::= <标识符> | <常数> | '(' <表达式> ')'
