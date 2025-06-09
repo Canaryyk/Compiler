@@ -4,110 +4,93 @@
 
 ## 文法产生式
 
-### 1. 语言的文法产生式集合
+下面是编译器所实现的语言的文法规则，采用类EBNF范式书写。
 
-#### 程序定义
+-   `{ ... }` 表示重复0次或多次。
+-   `[ ... ]` 表示可选（0次或1次）。
+-   `|` 表示选择。
+
+### 语法规则 (Syntax Rules)
+
 ```
-<Program> → program <Identifier> <Block> .
-对应中文产生式: <程序> → program <标识符> <分程序> .
+<Program>           ::= 'program' <Identifier> <Block> '.'
+// <程序>           ::= 'program' <标识符> <分程序> '.'
 
-<Block> → <VarDeclarations> <CompoundStatement>
-对应中文产生式: <分程序> → <变量说明> <复合语句>
-```
+<Block>             ::= [ <VarDeclarations> ] <CompoundStatement>
+// <分程序>         ::= [ <变量说明> ] <复合语句>
 
-#### 语句定义
-```
-<VarDeclarations> → var <IdentifierList> : <Type> ;
-对应中文产生式: <变量说明> → var <标识符表> : <类型> ;
+<VarDeclarations>   ::= 'var' <VarDeclaration> { <VarDeclaration> }
+// <变量说明>       ::= 'var' <变量声明> { <变量声明> }
 
-<IdentifierList> → <Identifier> | <Identifier> , <IdentifierList>
-对应中文产生式: <标识符表> → <标识符> | <标识符> , <标识符表>
+<VarDeclaration>    ::= <IdentifierList> ':' <Type> ';'
+// <变量声明>       ::= <标识符表> ':' <类型> ';'
 
-<CompoundStatement> → begin <StatementList> end
-对应中文产生式: <复合语句> → begin <语句表> end
+<IdentifierList>    ::= <Identifier> { ',' <Identifier> }
+// <标识符表>       ::= <标识符> { ',' <标识符> }
 
-<StatementList> → <Statement> <StatementListTail>
-对应中文产生式: <语句表> → <语句> <语句表后缀>
+<Type>              ::= 'integer' | 'real'
+// <类型>            ::= 'integer' | 'real'
 
-<StatementListTail> → ; <StatementList> | ε
-对应中文产生式: <语句表后缀> → ; <语句表> | ε
+<CompoundStatement> ::= 'begin' <StatementList> 'end'
+// <复合语句>       ::= 'begin' <语句表> 'end'
 
-<Statement> → <AssignmentStatement> | <IfStatement> | <WhileStatement> | <CompoundStatement> | ε
-对应中文产生式: <语句> → <赋值语句> | <条件语句> | <循环语句> | <复合语句> | ε
+<StatementList>     ::= <Statement> { ';' <Statement> }
+// <语句表>         ::= <语句> { ';' <语句> }
 
-<AssignmentStatement> → <Identifier> := <Expression>
-对应中文产生式: <赋值语句> → <标识符> := <算术表达式>
+<Statement>         ::= <AssignmentStatement>
+                    |   <IfStatement>
+                    |   <WhileStatement>
+                    |   <CompoundStatement>
+                    |   ε
+// <语句>            ::= <赋值语句> | <条件语句> | <循环语句> | <复合语句> | ε
 
-<IfStatement> → if <Condition> then <Statement> | if <Condition> then <Statement> else <Statement>
-对应中文产生式: <条件语句> → if <条件表达式> then <语句> | if <条件表达式> then <语句> else <语句>
+<AssignmentStatement> ::= <Identifier> ':=' <Expression>
+// <赋值语句>       ::= <标识符> ':=' <表达式>
 
-<WhileStatement> → while <Condition> do <Statement>
-对应中文产生式: <循环语句> → while <条件表达式> do <语句>
-```
-#### 条件表达式定义
-```
-<Condition> → <Expression> <RelationalOp> <Expression>
-对应中文产生式: <条件表达式> → <算术表达式> <关系运算符> <算术表达式>
+<IfStatement>       ::= 'if' <Condition> 'then' <Statement> [ 'else' <Statement> ]
+// <条件语句>       ::= 'if' <条件> 'then' <语句> [ 'else' <语句> ]
 
-<RelationalOp> → = | <> | < | <= | > | >=
-对应中文产生式: <关系运算符> → = | <> | < | <= | > | >=
-```
+<WhileStatement>    ::= 'while' <Condition> 'do' <Statement>
+// <循环语句>       ::= 'while' <条件> 'do' <语句>
 
-#### 算术表达式定义
-```
-<Expression> → <Term> <ExpressionTail>
-对应中文产生式: <算术表达式> → <项> <算术表达式后缀>
+<Condition>         ::= <Expression> <RelationalOp> <Expression>
+// <条件>            ::= <表达式> <关系运算符> <表达式>
 
-<ExpressionTail> → + <Term> <ExpressionTail> | - <Term> <ExpressionTail> | ε
-对应中文产生式: <算术表达式后缀> → + <项> <算术表达式后缀> | - <项> <算术表达式后缀> | ε
+<Expression>        ::= <Term> { ( '+' | '-' ) <Term> }
+// <表达式>         ::= <项> { ( '+' | '-' ) <项> }
 
-<Term> → <Factor> <TermTail>
-对应中文产生式: <项> → <因子> <项后缀>
+<Term>              ::= <Factor> { ( '*' | '/' ) <Factor> }
+// <项>              ::= <因子> { ( '*' | '/' ) <因子> }
 
-<TermTail> → * <Factor> <TermTail> | / <Factor> <TermTail> | ε
-对应中文产生式: <项后缀> → * <因子> <项后缀> | / <因子> <项后缀> | ε
+<Factor>            ::= <Identifier> | <Constant> | '(' <Expression> ')'
+// <因子>            ::= <标识符> | <常数> | '(' <表达式> ')'
 
-<Factor> → <Value> | ( <Expression> )
-对应中文产生式: <因子> → <算术量> | ( <算术表达式> )
-
-<Value> → <Identifier> | <Constant>
-对应中文产生式: <算术量> → <标识符> | <常数>
+<RelationalOp>      ::= '=' | '<>' | '<' | '<=' | '>' | '>='
+// <关系运算符>      ::= '=' | '<>' | '<' | '<=' | '>' | '>='
 ```
 
-#### 类型定义
+### 词法规则 (Lexical Rules)
+
+这部分定义了构成语言的基本符号（单词）的结构。
+
 ```
-<Type> → integer | real | char
-对应中文产生式: <类型> → integer | real | char
-```
+<Identifier>   ::= <Letter> { <Letter> | <Digit> }
+// <标识符>      ::= <字母> { <字母> | <数字> }
 
-#### 单词集定义
-```
-<Identifier> → <Letter> <IdentifierTail>
-对应中文产生式: <标识符> → <字母> <标识符后缀>
+<Constant>     ::= <Integer> | <Real>
+// <常数>        ::= <整数> | <实数>
 
-<IdentifierTail> → <Digit> <IdentifierTail> | <Letter> <IdentifierTail> | ε
-对应中文产生式: <标识符后缀> → <数字> <标识符后缀> | <字母> <标识符后缀> | ε
+<Integer>      ::= <Digit> { <Digit> }
+// <整数>        ::= <数字> { <数字> }
 
-<Constant> → <Integer> | <Real>
-对应中文产生式: <常数> → <整数> | <实数>
+<Real>         ::= <Integer> '.' <Integer>
+// <实数>        ::= <整数> '.' <整数>
 
-<Integer> → <Digit> <IntegerTail>
-对应中文产生式: <整数> → <数字> <整数后缀>
+<Letter>       ::= a | b | ... | z | A | B | ... | Z
+// <字母>        ::= a | b | ... | z | A | B | ... | Z
 
-<IntegerTail> → <Digit> <IntegerTail> | ε
-对应中文产生式: <整数后缀> → <数字> <整数后缀> | ε
-
-<Real> → <Integer> . <Integer>
-对应中文产生式: <实数> → <整数> . <整数>
-```
-
-#### 字符集定义
-```
-<Letter> → A | B | ... | Z | a | b | ... | z
-对应中文产生式: <字母> → A | B | ... | Z | a | b | ... | z
-
-<Digit> → 0 | 1 | ... | 9
-对应中文产生式: <数字> → 0 | 1 | ... | 9
+<Digit>        ::= 0 | 1 | ... | 9
+// <数字>        ::= 0 | 1 | ... | 9
 ```
 
 ## 项目结构
