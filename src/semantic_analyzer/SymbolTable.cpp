@@ -23,7 +23,7 @@ SymbolTable::SymbolTable() {
  * 将预定义的关键字列表加载到 vector 和 unordered_map 中。
  */
 void SymbolTable::initialize_keywords() {
-    keyword_table = {"program", "var", "begin", "end", "if", "then", "else", "while", "do", "integer", "real", "char"};
+    keyword_table = {"program", "var", "begin", "end", "if", "then", "else", "while", "do", "integer", "real", "char", "procedure", "function"};
     for (size_t i = 0; i < keyword_table.size(); ++i) {
         keyword_map[keyword_table[i]] = i;
     }

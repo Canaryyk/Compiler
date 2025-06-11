@@ -8,6 +8,7 @@
 #include "Parser.h"
 #include <iostream>
 #include <stdexcept>
+#include <memory>
 
 /**
  * @brief Parser 构造函数。
@@ -54,6 +55,7 @@ void Parser::match(TokenCategory category) {
     if (current_token.category == category) {
         advance();
     } else {
+        // More descriptive error messages can be added here
         throw std::runtime_error("Syntax error: Unexpected token.");
     }
 }
@@ -98,75 +100,208 @@ void Parser::backpatch(int quad_index, int target_label) {
  * 这是顶层语法规则，定义了一个完整程序的结构。
  */
 void Parser::program() {
-    if (table.get_keyword_table()[current_token.index - 1] != "program") 
-        throw std::runtime_error("Syntax error: Expected 'program'.");
-    match(TokenCategory::KEYWORD);
+    match(TokenCategory::KEYWORD); // 'program'
     match(TokenCategory::IDENTIFIER);
     block();
-    if (table.get_operator_table()[current_token.index - 1] != ".")
-        throw std::runtime_error("Syntax error: Expected '.'.");
-    match(TokenCategory::OPERATOR);
+    match(TokenCategory::OPERATOR); // '.'
 }
 
 /**
- * @brief 解析 <Block> ::= [<VarDeclarations>] <CompoundStatement>
- * 块是程序的基本组成单元，包含可选的变量声明和一条复合语句。
+ * @brief 解析 <Block> ::= <Declarations> <CompoundStatement>
  */
 void Parser::block() {
     table.enter_scope();
-    if (current_token.category == TokenCategory::KEYWORD && table.get_keyword_table()[current_token.index - 1] == "var") {
-        var_declarations();
-    }
+    declarations();
     compound_statement();
     table.exit_scope();
 }
 
 /**
- * @brief 解析 <VarDeclarations> ::= var <IdentifierList> : <Type> ; ...
- * 处理变量声明部分。
+ * @brief 解析 <Declarations> ::= [ <VarDeclarations> ] [ <SubprogramDeclarations> ]
+ */
+void Parser::declarations() {
+    if (current_token.category == TokenCategory::KEYWORD && table.get_keyword_table()[current_token.index - 1] == "var") {
+        var_declarations();
+    }
+    if (current_token.category == TokenCategory::KEYWORD && 
+        (table.get_keyword_table()[current_token.index - 1] == "procedure" || table.get_keyword_table()[current_token.index - 1] == "function")) {
+        subprogram_declarations();
+    }
+}
+
+/**
+ * @brief 解析 <VarDeclarations> ::= var <VarDeclaration> { <VarDeclaration> }
  */
 void Parser::var_declarations() {
-    match(TokenCategory::KEYWORD);
+    match(TokenCategory::KEYWORD); // 'var'
     while (current_token.category == TokenCategory::IDENTIFIER) {
         std::vector<Token> id_list = identifier_list();
-        if (table.get_operator_table()[current_token.index-1] != ":") throw std::runtime_error("Syntax error: Expected ':'.");
-        match(TokenCategory::OPERATOR);
-        
-        TypeEntry* var_type = new TypeEntry();
-        std::string type_name = table.get_keyword_table()[current_token.index - 1];
-        if (type_name == "integer") {
-            var_type->kind = TypeKind::SIMPLE;
-            var_type->size = 4;
-        } else if (type_name == "real") {
-            var_type->kind = TypeKind::SIMPLE;
-            var_type->size = 8;
-        } else {
-            delete var_type;
-            throw std::runtime_error("Unsupported variable type: " + type_name);
-        }
-        table.add_type(var_type);
-        match(TokenCategory::KEYWORD);
-        if (table.get_operator_table()[current_token.index-1] != ";") throw std::runtime_error("Syntax error: Expected ';'.");
-        match(TokenCategory::OPERATOR);
+        match(TokenCategory::OPERATOR); // ':'
+        TypeEntry* var_type_ptr = type();
+        match(TokenCategory::OPERATOR); // ';'
 
         for (const auto& id_token : id_list) {
             SymbolEntry entry;
             entry.name = table.get_simple_identifier_table()[id_token.index - 1];
             entry.category = SymbolCategory::VARIABLE;
-            entry.type = var_type;
+            entry.type = var_type_ptr;
             entry.address = current_address;
             entry.scope_level = table.get_current_scope_level();
             if (!table.add_symbol(entry)) {
                 throw std::runtime_error("Semantic error: Redefinition of symbol '" + entry.name + "'.");
             }
-            current_address += var_type->size;
+            current_address += var_type_ptr->size;
         }
     }
 }
 
 /**
+ * @brief 解析 <SubprogramDeclarations> ::= { <ProcedureDeclaration> | <FunctionDeclaration> }
+ */
+void Parser::subprogram_declarations() {
+    while (current_token.category == TokenCategory::KEYWORD) {
+        const auto& keyword = table.get_keyword_table()[current_token.index-1];
+        if (keyword == "procedure") {
+            procedure_declaration();
+            match(TokenCategory::OPERATOR); // ';'
+        } else if (keyword == "function") {
+            function_declaration();
+            match(TokenCategory::OPERATOR); // ';'
+        } else {
+            break;
+        }
+    }
+}
+
+/**
+ * @brief 解析 <ProcedureDeclaration>
+ */
+void Parser::procedure_declaration() {
+    match(TokenCategory::KEYWORD); // 'procedure'
+    
+    SymbolEntry entry;
+    entry.name = table.get_simple_identifier_table()[current_token.index - 1];
+    entry.category = SymbolCategory::PROCEDURE;
+    entry.type = nullptr; // Procedures have no return type
+    entry.scope_level = table.get_current_scope_level();
+    entry.address = quadruples.size(); // Entry point
+    match(TokenCategory::IDENTIFIER);
+
+    if (current_token.category == TokenCategory::OPERATOR && table.get_operator_table()[current_token.index-1] == "(") {
+        entry.subprogram_info = parameter_list();
+    } else {
+        entry.subprogram_info = std::make_unique<SubprogramInfo>(); // No parameters
+    }
+
+    if (!table.add_symbol(entry)) {
+        throw std::runtime_error("Semantic error: Redefinition of symbol '" + entry.name + "'.");
+    }
+    
+    match(TokenCategory::OPERATOR); // ';'
+    block();
+}
+
+/**
+ * @brief 解析 <FunctionDeclaration>
+ */
+void Parser::function_declaration() {
+    match(TokenCategory::KEYWORD); // 'function'
+
+    SymbolEntry entry;
+    entry.name = table.get_simple_identifier_table()[current_token.index - 1];
+    entry.category = SymbolCategory::FUNCTION;
+    entry.scope_level = table.get_current_scope_level();
+    entry.address = quadruples.size(); // Entry point
+    match(TokenCategory::IDENTIFIER);
+
+    if (current_token.category == TokenCategory::OPERATOR && table.get_operator_table()[current_token.index-1] == "(") {
+        entry.subprogram_info = parameter_list();
+    } else {
+        entry.subprogram_info = std::make_unique<SubprogramInfo>(); // No parameters
+    }
+    
+    match(TokenCategory::OPERATOR); // ':'
+    entry.type = type(); // Return type
+    
+    if (!table.add_symbol(entry)) {
+        throw std::runtime_error("Semantic error: Redefinition of symbol '" + entry.name + "'.");
+    }
+    
+    match(TokenCategory::OPERATOR); // ';'
+    block();
+}
+
+/**
+ * @brief 解析 <ParameterList>
+ */
+std::unique_ptr<SubprogramInfo> Parser::parameter_list() {
+    auto info = std::make_unique<SubprogramInfo>();
+    match(TokenCategory::OPERATOR); // '('
+    
+    if (current_token.category != TokenCategory::IDENTIFIER) { // Empty parameter list
+        match(TokenCategory::OPERATOR); // ')'
+        return info;
+    }
+
+    parameter(*info);
+    while (current_token.category == TokenCategory::OPERATOR && table.get_operator_table()[current_token.index-1] == ";") {
+        advance();
+        parameter(*info);
+    }
+    
+    match(TokenCategory::OPERATOR); // ')'
+    return info;
+}
+
+/**
+ * @brief 解析 <Parameter>
+ */
+void Parser::parameter(SubprogramInfo& info) {
+    std::vector<Token> id_list = identifier_list();
+    match(TokenCategory::OPERATOR); // ':'
+    TypeEntry* param_type = type();
+
+    for (const auto& id_token : id_list) {
+        SymbolEntry entry;
+        entry.name = table.get_simple_identifier_table()[id_token.index - 1];
+        entry.category = SymbolCategory::PARAMETER;
+        entry.type = param_type;
+        entry.address = current_address;
+        entry.scope_level = table.get_current_scope_level() + 1; // Parameters are in the next scope
+        if (!table.add_symbol(entry)) {
+            throw std::runtime_error("Semantic error: Redefinition of parameter '" + entry.name + "'.");
+        }
+        info.parameters.push_back(table.find_symbol(entry.name, true));
+        current_address += param_type->size;
+    }
+}
+
+/**
+ * @brief 解析 <Type>
+ */
+TypeEntry* Parser::type() {
+    TypeEntry* var_type = new TypeEntry();
+    if (current_token.category != TokenCategory::KEYWORD) {
+        throw std::runtime_error("Syntax error: Expected type keyword.");
+    }
+    std::string type_name = table.get_keyword_table()[current_token.index - 1];
+    if (type_name == "integer") {
+        var_type->kind = TypeKind::SIMPLE;
+        var_type->size = 4;
+    } else if (type_name == "real") {
+        var_type->kind = TypeKind::SIMPLE;
+        var_type->size = 8;
+    } else {
+        delete var_type;
+        throw std::runtime_error("Unsupported variable type: " + type_name);
+    }
+    table.add_type(var_type);
+    match(TokenCategory::KEYWORD);
+    return var_type;
+}
+
+/**
  * @brief 解析 <IdentifierList> ::= <Identifier> { , <Identifier> }
- * @return 包含所有已解析标识符 Token 的向量，用于后续的符号表操作。
  */
 std::vector<Token> Parser::identifier_list() {
     std::vector<Token> id_list;
@@ -182,19 +317,15 @@ std::vector<Token> Parser::identifier_list() {
 
 /**
  * @brief 解析 <CompoundStatement> ::= begin <StatementList> end
- * 复合语句是一个由 begin 和 end 包围的语句列表。
  */
 void Parser::compound_statement() {
-    if (table.get_keyword_table()[current_token.index - 1] != "begin") throw std::runtime_error("Syntax error: Expected 'begin'.");
-    match(TokenCategory::KEYWORD);
+    match(TokenCategory::KEYWORD); // 'begin'
     statement_list();
-    if (table.get_keyword_table()[current_token.index - 1] != "end") throw std::runtime_error("Syntax error: Expected 'end'.");
-    match(TokenCategory::KEYWORD);
+    match(TokenCategory::KEYWORD); // 'end'
 }
 
 /**
  * @brief 解析 <StatementList> ::= <Statement> { ; <Statement> }
- * 语句列表由一个或多个由分号分隔的语句构成。
  */
 void Parser::statement_list() {
     statement();
@@ -208,18 +339,29 @@ void Parser::statement_list() {
 }
 
 /**
- * @brief 解析 <Statement> ::= <AssignmentStatement> | <IfStatement> | <WhileStatement> | <CompoundStatement> | ...
- * 语句是程序执行的基本单位。
+ * @brief 解析 <Statement>
  */
 void Parser::statement() {
     if (current_token.category == TokenCategory::IDENTIFIER) {
-        assignment_statement();
+        SymbolEntry* symbol = table.find_symbol(table.get_simple_identifier_table()[current_token.index - 1]);
+        if (!symbol) throw std::runtime_error("Semantic error: Undeclared identifier.");
+        
+        // Look ahead to see if it's a subprogram call or assignment
+        Lexer temp_lexer = lexer;
+        Token lookahead_token = temp_lexer.get_next_token();
+
+        if (lookahead_token.category == TokenCategory::OPERATOR && table.get_operator_table()[lookahead_token.index-1] == "(") {
+            subprogram_call(symbol);
+        } else {
+            assignment_statement();
+        }
     } else if (current_token.category == TokenCategory::KEYWORD) {
         const auto& keyword = table.get_keyword_table()[current_token.index - 1];
         if (keyword == "if") if_statement();
         else if (keyword == "while") while_statement();
         else if (keyword == "begin") compound_statement();
     }
+    // ε (empty statement) is handled by advancing past a semicolon
 }
 
 /**
@@ -230,39 +372,88 @@ void Parser::assignment_statement() {
     SymbolEntry* left_entry = table.find_symbol(id_name);
     if (!left_entry) throw std::runtime_error("Semantic error: Undeclared identifier '" + id_name + "'.");
     
-    Operand left = {Operand::Type::IDENTIFIER, left_entry->address, left_entry->name};
     match(TokenCategory::IDENTIFIER);
-    
-    if (table.get_operator_table()[current_token.index - 1] != ":=") throw std::runtime_error("Syntax error: Expected ':='.");
-    match(TokenCategory::OPERATOR);
+    match(TokenCategory::OPERATOR); // ':='
     
     Operand right = expression();
-    emit(OpCode::ASSIGN, right, {}, left);
+    
+    // Check for function return value assignment
+    if (left_entry->category == SymbolCategory::FUNCTION && left_entry->scope_level == table.get_current_scope_level() -1) {
+         emit(OpCode::RETURN, right, {}, {});
+    } else {
+        Operand left = {Operand::Type::IDENTIFIER, left_entry->address, left_entry->name};
+        emit(OpCode::ASSIGN, right, {}, left);
+    }
 }
+
+
+/**
+ * @brief 解析 <SubprogramCall>
+ */
+Operand Parser::subprogram_call(SymbolEntry* symbol) {
+    if (symbol->category != SymbolCategory::FUNCTION && symbol->category != SymbolCategory::PROCEDURE) {
+        throw std::runtime_error("Semantic error: '" + symbol->name + "' is not a function or procedure.");
+    }
+
+    match(TokenCategory::IDENTIFIER); // Consume subprogram name
+    match(TokenCategory::OPERATOR); // '('
+    
+    std::vector<Operand> args;
+    if (current_token.category != TokenCategory::OPERATOR || table.get_operator_table()[current_token.index-1] != ")") {
+        args.push_back(expression());
+        while (current_token.category == TokenCategory::OPERATOR && table.get_operator_table()[current_token.index-1] == ",") {
+            advance();
+            args.push_back(expression());
+        }
+    }
+    
+    match(TokenCategory::OPERATOR); // ')'
+
+    // Semantic check for argument count
+    if (args.size() != symbol->subprogram_info->parameters.size()) {
+        throw std::runtime_error("Semantic error: Incorrect number of arguments for '" + symbol->name + "'.");
+    }
+
+    for (const auto& arg : args) {
+        emit(OpCode::PARAM, arg, {}, {});
+    }
+
+    Operand callee = {Operand::Type::IDENTIFIER, symbol->address, symbol->name};
+    Operand num_params = {Operand::Type::CONSTANT, (int)args.size(), std::to_string(args.size())};
+
+    if (symbol->category == SymbolCategory::FUNCTION) {
+        Operand result_temp = new_temp();
+        emit(OpCode::CALL, callee, num_params, result_temp);
+        return result_temp;
+    } else {
+        emit(OpCode::CALL, callee, num_params, {});
+        return {}; // Procedures don't return a value
+    }
+}
+
 
 /**
  * @brief 解析 <IfStatement> ::= if <Condition> then <Statement> [else <Statement>]
  */
 void Parser::if_statement() {
-    match(TokenCategory::KEYWORD);
+    match(TokenCategory::KEYWORD); // 'if'
     Operand cond = condition();
-    if (table.get_keyword_table()[current_token.index - 1] != "then") throw std::runtime_error("Syntax error: Expected 'then'.");
-    match(TokenCategory::KEYWORD);
-
-    int false_quad_idx = quadruples.size();
-    emit(OpCode::JUMP_IF_FALSE, cond, {}, {});
+    match(TokenCategory::KEYWORD); // 'then'
+    
+    int false_jump_quad = quadruples.size();
+    emit(OpCode::JPF, cond, {}, {}); // Placeholder for jump target
 
     statement();
 
     if (current_token.category == TokenCategory::KEYWORD && table.get_keyword_table()[current_token.index - 1] == "else") {
         advance();
-        int exit_quad_idx = quadruples.size();
-        emit(OpCode::JUMP, {}, {}, {});
-        backpatch(false_quad_idx, quadruples.size());
+        int skip_else_quad = quadruples.size();
+        emit(OpCode::JMP, {}, {}, {}); // Jump over the else part
+        backpatch(false_jump_quad, quadruples.size());
         statement();
-        backpatch(exit_quad_idx, quadruples.size());
+        backpatch(skip_else_quad, quadruples.size());
     } else {
-        backpatch(false_quad_idx, quadruples.size());
+        backpatch(false_jump_quad, quadruples.size());
     }
 }
 
@@ -270,122 +461,122 @@ void Parser::if_statement() {
  * @brief 解析 <WhileStatement> ::= while <Condition> do <Statement>
  */
 void Parser::while_statement() {
-    match(TokenCategory::KEYWORD);
-    int loop_start_addr = quadruples.size();
+    match(TokenCategory::KEYWORD); // 'while'
+    int loop_start = quadruples.size();
     Operand cond = condition();
-    if (table.get_keyword_table()[current_token.index - 1] != "do") throw std::runtime_error("Syntax error: Expected 'do'.");
-    match(TokenCategory::KEYWORD);
-    
-    int false_quad_idx = quadruples.size();
-    emit(OpCode::JUMP_IF_FALSE, cond, {}, {});
+    match(TokenCategory::KEYWORD); // 'do'
+
+    int false_jump_quad = quadruples.size();
+    emit(OpCode::JPF, cond, {}, {});
 
     statement();
     
-    emit(OpCode::JUMP, {}, {}, {Operand::Type::LABEL, loop_start_addr, "L" + std::to_string(loop_start_addr)});
-    backpatch(false_quad_idx, quadruples.size());
-}
-
-/**
- * @brief 解析 <Expression> ::= <Term> { (+|-) <Term> }
- * 表达式由一个或多个通过加法或减法运算符连接的项构成。
- */
-Operand Parser::expression() {
-    Operand left = term();
-    while (current_token.category == TokenCategory::OPERATOR) {
-        const auto& op_str = table.get_operator_table()[current_token.index - 1];
-        if (op_str == "+" || op_str == "-") {
-            OpCode op = (op_str == "+") ? OpCode::ADD : OpCode::SUB;
-            advance();
-            Operand right = term();
-            Operand result = new_temp();
-            emit(op, left, right, result);
-            left = result;
-        } else {
-            break;
-        }
-    }
-    return left;
-}
-
-/**
- * @brief 解析 <Term> ::= <Factor> { (*|/) <Factor> }
- * 项由一个或多个通过乘法或除法运算符连接的因子构成。
- */
-Operand Parser::term() {
-    Operand left = factor();
-    while (current_token.category == TokenCategory::OPERATOR) {
-        const auto& op_str = table.get_operator_table()[current_token.index - 1];
-        if (op_str == "*" || op_str == "/") {
-            OpCode op = (op_str == "*") ? OpCode::MUL : OpCode::DIV;
-            advance();
-            Operand right = factor();
-            Operand result = new_temp();
-            emit(op, left, right, result);
-            left = result;
-        } else {
-            break;
-        }
-    }
-    return left;
-}
-
-/**
- * @brief 解析 <Factor> ::= <Identifier> | <Constant> | ( <Expression> )
- * 因子是表达式的最基本单元。
- */
-Operand Parser::factor() {
-    Operand op;
-    if (current_token.category == TokenCategory::IDENTIFIER) {
-        const auto& id_name = table.get_simple_identifier_table()[current_token.index - 1];
-        SymbolEntry* entry = table.find_symbol(id_name);
-        if (!entry) throw std::runtime_error("Semantic error: Undeclared identifier '" + id_name + "'.");
-        op = {Operand::Type::IDENTIFIER, entry->address, entry->name};
-        advance();
-    } else if (current_token.category == TokenCategory::CONSTANT) {
-        op = {Operand::Type::CONSTANT, current_token.index - 1};
-        op.name = std::to_string(static_cast<int>(table.get_constant_table()[op.index]));
-        advance();
-    } else if (current_token.category == TokenCategory::OPERATOR && table.get_operator_table()[current_token.index - 1] == "(") {
-        advance();
-        op = expression();
-        if (table.get_operator_table()[current_token.index - 1] != ")") throw std::runtime_error("Syntax error: Expected ')'.");
-        advance();
-    } else {
-        throw std::runtime_error("Syntax error in factor.");
-    }
-    return op;
+    emit(OpCode::JMP, {}, {}, {Operand::Type::LABEL, loop_start, "L" + std::to_string(loop_start)});
+    backpatch(false_jump_quad, quadruples.size());
 }
 
 /**
  * @brief 解析 <Condition> ::= <Expression> <RelationalOp> <Expression>
- * 条件是用于 if 和 while 语句的布尔表达式。
  */
 Operand Parser::condition() {
     Operand left = expression();
     OpCode op = relational_op();
     Operand right = expression();
+
     Operand result = new_temp();
     emit(op, left, right, result);
     return result;
 }
 
 /**
+ * @brief 解析 <Expression> ::= <Term> { (+|-) <Term> }
+ */
+Operand Parser::expression() {
+    Operand result = term();
+    while (current_token.category == TokenCategory::OPERATOR) {
+        const auto& op_str = table.get_operator_table()[current_token.index - 1];
+        if (op_str == "+" || op_str == "-") {
+            OpCode op = (op_str == "+") ? OpCode::ADD : OpCode::SUB;
+            advance();
+            Operand term_val = term();
+            Operand new_result = new_temp();
+            emit(op, result, term_val, new_result);
+            result = new_result;
+        } else {
+            break;
+        }
+    }
+    return result;
+}
+
+/**
+ * @brief 解析 <Term> ::= <Factor> { (*|/) <Factor> }
+ */
+Operand Parser::term() {
+    Operand result = factor();
+    while (current_token.category == TokenCategory::OPERATOR) {
+        const auto& op_str = table.get_operator_table()[current_token.index - 1];
+        if (op_str == "*" || op_str == "/") {
+            OpCode op = (op_str == "*") ? OpCode::MUL : OpCode::DIV;
+            advance();
+            Operand factor_val = factor();
+            Operand new_result = new_temp();
+            emit(op, result, factor_val, new_result);
+            result = new_result;
+        } else {
+            break;
+        }
+    }
+    return result;
+}
+
+/**
+ * @brief 解析 <Factor> ::= <Identifier> | <Constant> | ( <Expression> ) | <SubprogramCall>
+ */
+Operand Parser::factor() {
+    if (current_token.category == TokenCategory::IDENTIFIER) {
+        SymbolEntry* symbol = table.find_symbol(table.get_simple_identifier_table()[current_token.index - 1]);
+        if (!symbol) throw std::runtime_error("Semantic error: Undeclared identifier.");
+
+        // Look ahead to see if it's a function call
+        Lexer temp_lexer = lexer;
+        Token lookahead_token = temp_lexer.get_next_token();
+
+        if (lookahead_token.category == TokenCategory::OPERATOR && table.get_operator_table()[lookahead_token.index-1] == "(") {
+            if (symbol->category != SymbolCategory::FUNCTION) {
+                 throw std::runtime_error("Semantic error: '" + symbol->name + "' is not a function and cannot be called in an expression.");
+            }
+            return subprogram_call(symbol);
+        } else {
+            advance();
+            return {Operand::Type::IDENTIFIER, symbol->address, symbol->name};
+        }
+    } else if (current_token.category == TokenCategory::CONSTANT) {
+        int const_index = current_token.index - 1;
+        double const_val = table.get_constant_table()[const_index];
+        advance();
+        return {Operand::Type::CONSTANT, const_index, std::to_string(const_val)};
+    } else if (current_token.category == TokenCategory::OPERATOR && table.get_operator_table()[current_token.index - 1] == "(") {
+        advance();
+        Operand result = expression();
+        match(TokenCategory::OPERATOR); // ')'
+        return result;
+    } else {
+        throw std::runtime_error("Syntax error: Invalid factor.");
+    }
+}
+
+/**
  * @brief 解析 <RelationalOp> ::= = | <> | < | <= | > | >=
- * 匹配一个关系操作符并返回对应的操作码。
  */
 OpCode Parser::relational_op() {
-    if (current_token.category == TokenCategory::OPERATOR) {
-        const auto& op_str = table.get_operator_table()[current_token.index - 1];
-        OpCode op;
-        if (op_str == "=") op = OpCode::EQ;
-        else if (op_str == "<>") op = OpCode::NE;
-        else if (op_str == "<") op = OpCode::LT;
-        else if (op_str == "<=") op = OpCode::LE;
-        else if (op_str == ">") op = OpCode::GT;
-        else if (op_str == ">=") op = OpCode::GE;
-        else throw std::runtime_error("Invalid relational operator.");
-        advance();
-        return op;
-    }
-    throw std::runtime_error("Expected relational operator.");
+    const auto& op = table.get_operator_table()[current_token.index - 1];
+    advance();
+    if (op == "=") return OpCode::EQ;
+    if (op == "<>") return OpCode::NE;
+    if (op == "<") return OpCode::LT;
+    if (op == "<=") return OpCode::LE;
+    if (op == ">") return OpCode::GT;
+    if (op == ">=") return OpCode::GE;
+    throw std::runtime_error("Syntax error: Expected relational operator.");
 }

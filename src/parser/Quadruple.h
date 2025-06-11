@@ -34,13 +34,13 @@ enum class OpCode {
     GE, ///< 大于等于 (result = (arg1 >= arg2))
     
     // --- 跳转指令 ---
-    JUMP,            ///< 无条件跳转 (goto result)
-    JUMP_IF_FALSE,   ///< 条件跳转 (if not arg1 then goto result)
+    JMP,            ///< 无条件跳转 (goto result)
+    JPF,   ///< 条件为假则跳转 (if not arg1 then goto result)
     
-    // --- 过程/函数调用 (未来可能使用) ---
-    PARAM, ///< 传递参数
-    CALL,  ///< 调用过程/函数
-    RET,   ///< 从过程/函数返回
+    // --- 过程/函数调用 ---
+    PARAM,  ///< 为函数/过程调用传递参数 (pass arg1)
+    CALL,   ///< 调用一个过程或函数 (call arg1, arg2=num_params, result=return_val_temp)
+    RETURN, ///< 从一个函数返回一个值 (return arg1)
     
     // --- 占位符 ---
     NO_OP  ///< 空操作，不执行任何动作

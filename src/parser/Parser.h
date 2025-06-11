@@ -96,20 +96,33 @@ private:
     // --- 文法规则对应的递归下降函数 ---
     
     void program();             // <Program> ::= program <Identifier> <Block> .
-    void block();               // <Block> ::= [<VarDeclarations>] <CompoundStatement>
+    void block();               // <Block> ::= <Declarations> <CompoundStatement>
+    void declarations();        // <Declarations> ::= [ <VarDeclarations> ] [ <SubprogramDeclarations> ]
     void var_declarations();    // <VarDeclarations> ::= var <IdentifierList> : <Type> ; ...
+    
+    // --- 子程序和参数处理 ---
+    void subprogram_declarations(); // { <ProcedureDeclaration> | <FunctionDeclaration> }
+    void procedure_declaration();   // 'procedure' <Identifier> [ '(' <ParameterList> ')' ] ';' <Block> ';'
+    void function_declaration();    // 'function' <Identifier> [ '(' <ParameterList> ')' ] ':' <Type> ';' <Block> ';'
+    std::unique_ptr<SubprogramInfo> parameter_list(); // <Parameter> { ';' <Parameter> }
+    void parameter(SubprogramInfo& info); // <IdentifierList> ':' <Type>
+
     std::vector<Token> identifier_list(); // <IdentifierList> ::= <Identifier> { , <Identifier> }
+    TypeEntry* type(); // <Type> ::= 'integer' | 'real'
+
+    // --- 语句解析 ---
     void compound_statement();  // <CompoundStatement> ::= begin <StatementList> end
     void statement_list();      // <StatementList> ::= <Statement> { ; <Statement> }
     void statement();           // <Statement> ::= <AssignmentStatement> | <IfStatement> | ...
     void assignment_statement();// <AssignmentStatement> ::= <Identifier> := <Expression>
     void if_statement();        // <IfStatement> ::= if <Condition> then <Statement> [else <Statement>]
     void while_statement();     // <WhileStatement> ::= while <Condition> do <Statement>
+    Operand subprogram_call(SymbolEntry* symbol);   // <Identifier> '(' [ <ArgumentList> ] ')'
     
     // --- 表达式和条件解析 ---
     Operand expression();       // <Expression> ::= <Term> { (+|-) <Term> }
     Operand term();             // <Term> ::= <Factor> { (*|/) <Factor> }
-    Operand factor();           // <Factor> ::= <Identifier> | <Constant> | ( <Expression> )
+    Operand factor();           // <Factor> ::= <Identifier> | <Constant> | ( <Expression> ) | <SubprogramCall>
     Operand condition();        // <Condition> ::= <Expression> <RelationalOp> <Expression>
     OpCode relational_op();     // <RelationalOp> ::= = | <> | < | <= | > | >=
 };

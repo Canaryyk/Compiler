@@ -2,6 +2,11 @@
 
 program TestProgram
     var i, sum, product : integer;
+    function qqqq(u:integer):integer;
+        var a,b :integer;
+        begin
+            u:=1
+        end;
 begin
     i := 0.5+0.5;
     sum := 0;

@@ -12,6 +12,7 @@ enum class SymbolCategory {
     CONSTANT,   ///< 常量
     FUNCTION,   ///< 函数
     PROCEDURE,  //过程
+    PARAMETER,   //形参
     TYPE_NAME   // 类型名
 };
 
@@ -26,6 +27,8 @@ enum class TypeKind {
 
 // 前向声明，因为 RecordField 和 ArrayInfo 会引用 TypeEntry
 struct TypeEntry;
+//前向声明
+struct SymbolEntry;
 
 /**
  * @brief 描述数组类型的信息。
@@ -83,6 +86,14 @@ struct TypeEntry {
 };
 
 /**
+ * @brief 描述函数或过程的额外信息。
+ */
+struct SubprogramInfo {
+    std::vector<SymbolEntry*> parameters; ///< 形参列表，指针指向符号表中的条目。
+    // 可以添加更多信息，如局部变量大小等。
+};
+
+/**
  * @brief 符号表中的一个条目，代表一个在源代码中定义的符号。
  * (对应一些编译器教材中的 SYNVBL 结构)
  */
@@ -92,6 +103,52 @@ struct SymbolEntry {
     TypeEntry* type;         ///< 指向该符号类型的指针。
     int address;             ///< 符号在内存中的地址或在活动记录中的偏移。
     int scope_level;         ///< 符号所在的作用域层级。
+    /**
+     * @brief 当符号是函数或过程时，存储其额外信息。
+     * 如果 category 不是 FUNCTION 或 PROCEDURE，则此指针为 nullptr。
+     */
+    std::unique_ptr<SubprogramInfo> subprogram_info;
+
+    // --- Special Member Functions ---
+
+    // 默认构造
+    SymbolEntry() = default;
+
+    // 自定义拷贝构造函数
+    SymbolEntry(const SymbolEntry& other)
+        : name(other.name),
+          category(other.category),
+          type(other.type),
+          address(other.address),
+          scope_level(other.scope_level) {
+        if (other.subprogram_info) {
+            subprogram_info = std::make_unique<SubprogramInfo>(*other.subprogram_info);
+        }
+    }
+
+    // 默认移动构造函数
+    SymbolEntry(SymbolEntry&& other) noexcept = default;
+
+    // 自定义拷贝赋值运算符
+    SymbolEntry& operator=(const SymbolEntry& other) {
+        if (this == &other) {
+            return *this;
+        }
+        name = other.name;
+        category = other.category;
+        type = other.type;
+        address = other.address;
+        scope_level = other.scope_level;
+        if (other.subprogram_info) {
+            subprogram_info = std::make_unique<SubprogramInfo>(*other.subprogram_info);
+        } else {
+            subprogram_info.reset();
+        }
+        return *this;
+    }
+
+    // 默认移动赋值运算符
+    SymbolEntry& operator=(SymbolEntry&& other) noexcept = default;
 };
 
 /**
