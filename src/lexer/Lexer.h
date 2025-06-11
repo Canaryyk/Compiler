@@ -10,7 +10,7 @@ class Lexer {
 public:
     Lexer(const std::string& source, SymbolTable& table);
     Token get_next_token();
-    const std::vector<Token>& get_all_tokens() const;
+    const std::vector<Token>& get_all_tokens();
 
 private:
     std::string source_code;

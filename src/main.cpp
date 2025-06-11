@@ -1,74 +1,105 @@
 #include <iostream>
 #include <fstream>
 #include <sstream>
-#include <unordered_map>
-#include <set>
-#include <algorithm>
+#include <string>
+#include <vector>
+#include <stdexcept>
+
+#include "../webview/json.hpp"
 #include "semantic_analyzer/SymbolTable.h"
 #include "lexer/Lexer.h"
+#include "lexer/Token.h"
 #include "parser/Parser.h"
-#include "utils/Printer.h"
-#include "optimizer/Optimizer.h"
+#include "parser/Quadruple.h"
+#include "optimizer/optimizer.h"
 
-int main() {
-    std::string file_path = "examples/test_lexical.txt";
-    std::ifstream file_stream(file_path);
-    if (!file_stream) {
-        std::cerr << "Error: Cannot open file " << file_path << std::endl;
+//
+// 使用方法:
+// ./compiler --input <file_path> --target <tokens|quads|symbols>
+//
+// 示例:
+// ./compiler --input ../examples/test_lexical.txt --target tokens
+// ./compiler --input ../examples/test_semantic.txt --target quads
+// ./compiler --input ../examples/test_semantic.txt --target symbols
+//
+
+void print_usage() {
+    std::cerr << "Usage: compiler --input <file_path> --target <tokens|quads|symbols>" << std::endl;
+}
+
+int main(int argc, char* argv[]) {
+    std::string input_file;
+    std::string target;
+
+    // 1. 解析命令行参数
+    for (int i = 1; i < argc; ++i) {
+        std::string arg = argv[i];
+        if (arg == "--input" && i + 1 < argc) {
+            input_file = argv[++i];
+        } else if (arg == "--target" && i + 1 < argc) {
+            target = argv[++i];
+        }
+    }
+
+    if (input_file.empty() || target.empty()) {
+        print_usage();
         return 1;
     }
 
+    // 2. 读取输入文件
+    std::ifstream file_stream(input_file);
+    if (!file_stream) {
+        std::cerr << "Error: Cannot open file " << input_file << std::endl;
+        return 1;
+    }
     std::stringstream buffer;
     buffer << file_stream.rdbuf();
     std::string source_code = buffer.str();
 
-    // --- 词法分析 ---
-    SymbolTable symbol_table;
-    Lexer lexer(source_code, symbol_table);
-    // 完整地运行一次词法分析，以填充用于打印的简单标识符表
-    Lexer lexer_for_print(source_code, symbol_table);
-    Token token_for_print;
-    do {
-        token_for_print = lexer_for_print.get_next_token();
-    } while (token_for_print.category != TokenCategory::END_OF_FILE);
-    
-    // 打印词法分析结果
-    Printer::print_lexical_output(lexer_for_print.get_all_tokens(), symbol_table);
-    std::cout << "\n==============================================\n\n";
-
-    // --- 语法、语义分析和中间代码生成 ---
+    // 3. 运行编译器并生成JSON
     try {
-    Parser parser(lexer, symbol_table);
-    parser.parse();
-    auto raw_quads = parser.get_quadruples();
-    
-    // 在 parser.parse() 之后
-    std::cout << "Raw quads size: " << raw_quads.size() << std::endl;
-    
-    // 打印原始四元式
-    std::cout << "\n原始四元式：" << std::endl;
-    Printer::print_semantic_output(raw_quads, symbol_table);
-    
-    try {
-        // 调用优化器
-        auto optimized_quads = Optimizer::optimize(raw_quads, symbol_table);
+        SymbolTable symbol_table;
+        Lexer lexer(source_code, symbol_table);
+        nlohmann::json json_output;
 
-        // 在优化之后
-        std::cout << "\n优化后四元式：" << std::endl;
-        std::cout << "Optimized quads size: " << optimized_quads.size() << std::endl;
+        if (target == "tokens") {
+            // 需要完整运行一次词法分析来填充所有表
+            auto all_tokens = lexer.get_all_tokens();
+            // 这里将调用为 vector<Token> 定制的 to_json
+            to_json(json_output, all_tokens, symbol_table);
 
-        // 打印优化后中间代码
-        Printer::print_semantic_output(optimized_quads, symbol_table);
+        } else if (target == "quads" || target == "symbols") {
+            Parser parser(lexer, symbol_table);
+            parser.parse();
+
+            if (target == "quads") {
+                const auto& original_quads = parser.get_quadruples();
+                auto optimized_quads = Optimizer::optimize(original_quads, symbol_table);
+                
+                nlohmann::json before, after;
+                to_json(before, original_quads, symbol_table);
+                to_json(after, optimized_quads, symbol_table);
+
+                json_output = {
+                    {"before", before},
+                    {"after", after}
+                };
+            } else { // target == "symbols"
+                json_output = symbol_table.to_json(); // 使用 SymbolTable 的 to_json 方法
+            }
+        } else {
+            std::cerr << "Error: Invalid target '" << target << "'" << std::endl;
+            print_usage();
+            return 1;
+        }
+
+        // 4. 打印JSON到标准输出
+        std::cout << json_output.dump(4) << std::endl;
+
     } catch (const std::exception& e) {
-        std::cerr << "优化过程中出现错误: " << e.what() << std::endl;
-        std::cerr << "将使用未优化的四元式继续执行。" << std::endl;
-        // 使用原始四元式继续
-        Printer::print_semantic_output(raw_quads, symbol_table);
+        std::cerr << "An error occurred: " << e.what() << std::endl;
+        return 1;
     }
-  } 
-    catch (const std::runtime_error& e) {
-    std::cerr << e.what() << std::endl;
-    return 1;
-    }
+
     return 0;
 }

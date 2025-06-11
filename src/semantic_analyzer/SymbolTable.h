@@ -5,6 +5,7 @@
 #include <vector>
 #include <unordered_map>
 #include <memory>
+#include "../../webview/json.hpp"
 
 
 enum class SymbolCategory {
@@ -16,6 +17,19 @@ enum class SymbolCategory {
     TYPE_NAME   // 类型名
 };
 
+// 为 SymbolCategory 提供字符串转换
+inline std::string to_string(SymbolCategory category) {
+    switch (category) {
+        case SymbolCategory::VARIABLE: return "VARIABLE";
+        case SymbolCategory::CONSTANT: return "CONSTANT";
+        case SymbolCategory::FUNCTION: return "FUNCTION";
+        case SymbolCategory::PROCEDURE: return "PROCEDURE";
+        case SymbolCategory::PARAMETER: return "PARAMETER";
+        case SymbolCategory::TYPE_NAME: return "TYPE_NAME";
+        default: return "INVALID_CATEGORY";
+    }
+}
+
 /**
  * @brief 类型的种类，用于区分基本类型、数组、记录等。
  */
@@ -25,21 +39,39 @@ enum class TypeKind {
     RECORD      ///< 记录 (结构体)
 };
 
+// 为 TypeKind 提供字符串转换
+inline std::string to_string(TypeKind kind) {
+    switch (kind) {
+        case TypeKind::SIMPLE: return "SIMPLE";
+        case TypeKind::ARRAY: return "ARRAY";
+        case TypeKind::RECORD: return "RECORD";
+        default: return "INVALID_KIND";
+    }
+}
+
 // 前向声明，因为 RecordField 和 ArrayInfo 会引用 TypeEntry
 struct TypeEntry;
 //前向声明
 struct SymbolEntry;
 
+// Forward declarations for to_json functions to resolve circular dependencies
+void to_json(nlohmann::json& j, const struct ArrayInfo& i);
+void to_json(nlohmann::json& j, const struct RecordField& f);
+void to_json(nlohmann::json& j, const struct RecordInfo& i);
+void to_json(nlohmann::json& j, const struct TypeEntry& t);
+void to_json(nlohmann::json& j, const struct SubprogramInfo& i);
+void to_json(nlohmann::json& j, const struct SymbolEntry& e);
+
 /**
  * @brief 描述数组类型的信息。
  * (对应一些编译器教材中的 AINFL 结构)
  */
-
 struct ArrayInfo {
     TypeEntry* element_type; ///< 数组元素的类型。
     int lower_bound;         ///< 数组下界。
     int upper_bound;         ///< 数组上界。
 };
+
 
 /**
  * @brief 描述记录（结构体）中的一个字段（成员）。
@@ -50,6 +82,7 @@ struct RecordField {
     int offset;              ///< 字段在记录内部的地址偏移量。
 };
 
+
 /**
  * @brief 描述记录类型的信息。
  * (对应一些编译器教材中的 RINFL 结构)
@@ -57,6 +90,7 @@ struct RecordField {
 struct RecordInfo {
     std::vector<RecordField> fields; ///< 记录包含的所有字段。
 };
+
 
 /**
  * @brief 类型表中的一个条目，用于描述一个具体的类型。
@@ -85,6 +119,7 @@ struct TypeEntry {
     }
 };
 
+
 /**
  * @brief 描述函数或过程的额外信息。
  */
@@ -92,6 +127,7 @@ struct SubprogramInfo {
     std::vector<SymbolEntry*> parameters; ///< 形参列表，指针指向符号表中的条目。
     // 可以添加更多信息，如局部变量大小等。
 };
+
 
 /**
  * @brief 符号表中的一个条目，代表一个在源代码中定义的符号。
@@ -150,6 +186,78 @@ struct SymbolEntry {
     // 默认移动赋值运算符
     SymbolEntry& operator=(SymbolEntry&& other) noexcept = default;
 };
+
+// --- JSON Serialization Implementations ---
+
+inline void to_json(nlohmann::json& j, const ArrayInfo& i) {
+    j = nlohmann::json::object();
+    j["lower_bound"] = i.lower_bound;
+    j["upper_bound"] = i.upper_bound;
+    if (i.element_type) {
+        j["element_type"] = *i.element_type;
+    }
+}
+
+inline void to_json(nlohmann::json& j, const RecordField& f) {
+    j = nlohmann::json::object();
+    j["name"] = f.name;
+    j["offset"] = f.offset;
+    if (f.type) {
+        j["type"] = *f.type;
+    }
+}
+
+inline void to_json(nlohmann::json& j, const RecordInfo& i) {
+    j = nlohmann::json{
+        {"fields", i.fields}
+    };
+}
+
+inline void to_json(nlohmann::json& j, const TypeEntry& t) {
+    j = nlohmann::json{
+        {"kind", to_string(t.kind)},
+        {"size", t.size}
+    };
+    switch (t.kind) {
+        case TypeKind::ARRAY:
+            if (t.info.array_info) {
+                j["info"] = *t.info.array_info;
+            }
+            break;
+        case TypeKind::RECORD:
+             if (t.info.record_info) {
+                j["info"] = *t.info.record_info;
+            }
+            break;
+        default:
+            break;
+    }
+}
+
+inline void to_json(nlohmann::json& j, const SymbolEntry& e) {
+    j = nlohmann::json::object();
+    j["name"] = e.name;
+    j["category"] = to_string(e.category);
+    j["address"] = e.address;
+    j["scope_level"] = e.scope_level;
+    if (e.type) {
+        j["type"] = *e.type;
+    }
+    if (e.subprogram_info) {
+        j["subprogram_info"] = *e.subprogram_info;
+    }
+}
+
+inline void to_json(nlohmann::json& j, const SubprogramInfo& i) {
+    auto params = nlohmann::json::array();
+    for (const auto& p : i.parameters) {
+        if (p) {
+            // 只序列化名字以避免循环
+            params.push_back(p->name);
+        }
+    }
+    j = nlohmann::json{ {"parameters", params} };
+}
 
 /**
  * @class SymbolTable
@@ -254,6 +362,74 @@ public:
     const std::vector<std::string>& get_simple_identifier_table() const;
     const std::vector<double>& get_constant_table() const;
     const std::vector<SymbolEntry>& get_symbol_entries() const;
+
+    // SymbolTable 的 to_json 方法, 为前端定制输出
+    nlohmann::json to_json() const {
+        nlohmann::json j;
+
+        // 1. 格式化符号表 (SYNVBL)
+        nlohmann::json formatted_symbols = nlohmann::json::array();
+        const auto& entries = get_symbol_entries();
+        for (size_t i = 0; i < entries.size(); ++i) {
+            const auto& entry = entries[i];
+            
+            // 将类型转换为可读字符串
+            std::string type_str = "unknown";
+            if (entry.type) {
+                if (entry.type->kind == TypeKind::SIMPLE) {
+                     if (entry.type->size == 4) type_str = "integer";
+                     else if (entry.type->size == 8) type_str = "real";
+                } else if (entry.type->kind == TypeKind::ARRAY) {
+                    type_str = "array";
+                } else if (entry.type->kind == TypeKind::RECORD) {
+                    type_str = "record";
+                }
+            }
+            
+            // 将类别转换为可读字符串
+            std::string cat_str = "v"; // 默认是变量
+            switch(entry.category){
+                case SymbolCategory::VARIABLE: cat_str = "v"; break;
+                case SymbolCategory::CONSTANT: cat_str = "c"; break;
+                case SymbolCategory::FUNCTION: cat_str = "f"; break;
+                case SymbolCategory::PROCEDURE: cat_str = "p"; break;
+                case SymbolCategory::PARAMETER: cat_str = "param"; break;
+                case SymbolCategory::TYPE_NAME: cat_str = "type"; break;
+                default: cat_str = "?"; break;
+            }
+
+            formatted_symbols.push_back({
+                {"name", entry.name},
+                {"type", type_str},
+                {"category", cat_str},
+                {"address", entry.address}
+            });
+        }
+        j["symbols"] = formatted_symbols;
+
+        // 2. 常数表 (C表)
+        nlohmann::json constants = nlohmann::json::array();
+        const auto& constant_table_data = get_constant_table();
+        for (size_t i = 0; i < constant_table_data.size(); ++i) {
+            constants.push_back({{"index", i + 1}, {"value", constant_table_data[i]}});
+        }
+        j["constants"] = constants;
+
+        // 3. 活动记录映像
+        nlohmann::json activation_record = nlohmann::json::array();
+        std::map<int, std::string> memory_layout;
+        for(const auto& entry : entries) {
+            if (entry.category == SymbolCategory::VARIABLE || entry.category == SymbolCategory::PARAMETER) {
+                 memory_layout[entry.address] = entry.name;
+            }
+        }
+        for (auto const& [addr, name] : memory_layout) {
+            activation_record.push_back({{"address", addr}, {"name", name}});
+        }
+        j["activation_record"] = activation_record;
+        
+        return j;
+    }
 
 private:
     /**

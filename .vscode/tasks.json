@@ -14,10 +14,9 @@
                 "${workspaceFolder}/src/lexer/*.cpp",
                 "${workspaceFolder}/src/parser/*.cpp",
                 "${workspaceFolder}/src/semantic_analyzer/*.cpp",
-                "${workspaceFolder}/src/utils/*.cpp",
+                "${workspaceFolder}/src/optimizer/*.cpp",
                 "-o",
-                "${workspaceFolder}/build/compiler_app.exe",
-                "${workspaceFolder}/src/optimizer/*.cpp"
+                "${workspaceFolder}/build/compiler_app.exe"
             ],
             "group": "build",
             "presentation": {

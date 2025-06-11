@@ -4,7 +4,10 @@
 Lexer::Lexer(const std::string& source, SymbolTable& table)
     : source_code(source), current_pos(0), symbol_table(table) {}
 
-const std::vector<Token>& Lexer::get_all_tokens() const {
+const std::vector<Token>& Lexer::get_all_tokens() {
+    if (tokens.empty() && !source_code.empty()) {
+        while(get_next_token().category != TokenCategory::END_OF_FILE);
+    }
     return tokens;
 }
 

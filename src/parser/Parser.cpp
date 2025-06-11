@@ -9,12 +9,38 @@
 #include <iostream>
 #include <stdexcept>
 #include <memory>
+#include "../semantic_analyzer/SymbolTable.h"
+#include "Quadruple.h"
+
+// opCode_to_string 函数的定义
+std::string opcode_to_string(OpCode op) {
+    switch(op) {
+        case OpCode::ADD: return "+";
+        case OpCode::SUB: return "-";
+        case OpCode::MUL: return "*";
+        case OpCode::DIV: return "/";
+        case OpCode::ASSIGN: return ":=";
+        case OpCode::EQ: return "=";
+        case OpCode::NE: return "<>";
+        case OpCode::LT: return "<";
+        case OpCode::LE: return "<=";
+        case OpCode::GT: return ">";
+        case OpCode::GE: return ">=";
+        case OpCode::JMP: return "j";
+        case OpCode::JPF: return "j<";
+        case OpCode::CALL: return "call";
+        case OpCode::PARAM: return "param";
+        case OpCode::RETURN: return "ret";
+        case OpCode::PRINT: return "print";
+        case OpCode::LABEL: return "label";
+        default: return "op?";
+    }
+}
 
 void print_operand_details(const std::string& label, const Operand& op) {
-    std::cout << label << " -> "
-              << "Type: " << static_cast<int>(op.type)
-              << ", Name: '" << op.name << "'"
-              << ", Index: " << op.index << std::endl;
+    std::cout << label << ": Type=" << static_cast<int>(op.type)
+              << ", Index=" << op.index
+              << ", Name='" << op.name << "'" << std::endl;
 }
 
 /**

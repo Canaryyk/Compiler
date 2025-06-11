@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Compiler Visualizer</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/lib/codemirror.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/theme/material-darker.css">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="container">
+        <h1>Compiler Visualizer</h1>
+        <div class="main-content">
+            <div class="editor-container">
+                <h2>Source Code</h2>
+                <textarea id="code-editor"></textarea>
+                <div class="controls">
+                    <div class="target-selector">
+                        <label><input type="radio" name="target" value="tokens" checked> Tokens</label>
+                        <label><input type="radio" name="target" value="quads"> Quadruples</label>
+                        <label><input type="radio" name="target" value="symbols"> Symbol Table</label>
+                    </div>
+                    <button id="compile-btn">Compile & Visualize</button>
+                </div>
+            </div>
+            <div class="output-container">
+                <h2>Output</h2>
+                <div id="loading-spinner" class="spinner" style="display: none;"></div>
+                <pre id="output-display"></pre>
+                <div id="error-display" class="error-message"></div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/lib/codemirror.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/mode/pascal/pascal.js"></script>
+    <script src="app.js"></script>
+</body>
+</html> 
