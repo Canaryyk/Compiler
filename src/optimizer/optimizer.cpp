@@ -104,14 +104,14 @@ std::vector<BasicBlock> Optimizer::build_basic_blocks(const std::vector<Quadrupl
         
         if (is_jump_op(last_quad.op)) {
             // 处理跳转指令
-            if (last_quad.op == OpCode::JUMP) {
+            if (last_quad.op == OpCode::JMP) {
                 // 无条件跳转
                 int target_label = last_quad.result.index;
                 if (label_to_block.count(target_label)) {
                     blocks[i].successors.insert(label_to_block[target_label]);
                     blocks[label_to_block[target_label]].predecessors.insert(i);
                 }
-            } else if (last_quad.op == OpCode::JUMP_IF_FALSE) {
+            } else if (last_quad.op == OpCode::JPF) {
                 // 条件跳转
                 int target_label = last_quad.result.index;
                 if (label_to_block.count(target_label)) {
@@ -289,7 +289,7 @@ std::vector<Quadruple> Optimizer::optimize_basic_blocks(std::vector<BasicBlock>&
 }
 
 bool Optimizer::is_jump_op(OpCode op) {
-    return op == OpCode::JUMP || op == OpCode::JUMP_IF_FALSE;
+    return op == OpCode::JMP || op == OpCode::JPF;
 }
 
 bool Optimizer::is_label_op(OpCode op) {
@@ -431,7 +431,7 @@ bool Optimizer::dead_code_elimination(std::vector<Quadruple>& quads, const Symbo
         // 检查这条指令是否需要被保留
 
         // 1. 有副作用的指令总是活的
-        if (q.op == OpCode::JUMP || q.op == OpCode::JUMP_IF_FALSE || q.op == OpCode::PRINT || q.op == OpCode::CALL || q.op == OpCode::RET) {
+        if (q.op == OpCode::JMP || q.op == OpCode::JPF || q.op == OpCode::PRINT || q.op == OpCode::CALL || q.op == OpCode::RETURN) {
             is_live = true;
         } 
         // 2. 赋值目标是用户声明的变量，则该赋值指令总是活的

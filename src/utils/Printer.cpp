@@ -71,6 +71,31 @@ void Printer::print_lexical_output(const std::vector<Token>& tokens, SymbolTable
     std::cout << std::endl;
 }
 
+// Helper to convert OpCode to string
+// 在 src/utils/Printer.cpp 文件中
+
+std::string opcode_to_string(OpCode op) {
+    switch(op) {
+        case OpCode::ADD: return "+";
+        case OpCode::SUB: return "-";
+        case OpCode::MUL: return "*";
+        case OpCode::DIV: return "/";
+        case OpCode::ASSIGN: return ":=";
+        case OpCode::EQ: return "=";
+        case OpCode::NE: return "<>";
+        case OpCode::LT: return "<";
+        case OpCode::LE: return "<=";
+        case OpCode::GT: return ">";
+        case OpCode::GE: return ">=";
+        case OpCode::JMP: return "j";
+        case OpCode::JPF: return "j<";
+        case OpCode::CALL: return "call";
+        case OpCode::PARAM: return "param";
+        case OpCode::RETURN: return "ret";
+        default: return "op?";
+    }
+}
+
 // Helper to convert Operand to string
 std::string operand_to_string(const Operand& op, SymbolTable& symbol_table) {
     if (op.type == Operand::Type::NONE) {
