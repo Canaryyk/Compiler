@@ -12,29 +12,10 @@
 
 ### 语法规则 (Syntax Rules)
 
-下面是编译器所实现的语言的文法规则，采用类EBNF范式书写。
-
--   `{ ... }` 表示重复0次或多次。
--   `[ ... ]` 表示可选（0次或1次）。
--   `|` 表示选择。
-
-### 语法规则 (Syntax Rules)
-
 ```
 <Program>           ::= 'program' <Identifier> <Block> '.'
 // <程序>           ::= 'program' <标识符> <分程序> '.'
-<Program>           ::= 'program' <Identifier> <Block> '.'
-// <程序>           ::= 'program' <标识符> <分程序> '.'
 
-<Block>             ::= [ <VarDeclarations> ] <CompoundStatement>
-// <分程序>         ::= [ <变量说明> ] <复合语句>
-
-<VarDeclarations>   ::= 'var' <VarDeclaration> { <VarDeclaration> }
-// <变量说明>       ::= 'var' <变量声明> { <变量声明> }
-
-<VarDeclaration>    ::= <IdentifierList> ':' <Type> ';'
-// <变量声明>       ::= <标识符表> ':' <类型> ';'
-// 语义动作:        { 将变量信息登录到符号表 }
 <Block>             ::= [ <VarDeclarations> ] <CompoundStatement>
 // <分程序>         ::= [ <变量说明> ] <复合语句>
 
@@ -50,24 +31,7 @@
 
 <Type>              ::= 'integer' | 'real'
 // <类型>            ::= 'integer' | 'real'
-<IdentifierList>    ::= <Identifier> { ',' <Identifier> }
-// <标识符表>       ::= <标识符> { ',' <标识符> }
 
-<Type>              ::= 'integer' | 'real'
-// <类型>            ::= 'integer' | 'real'
-
-<CompoundStatement> ::= 'begin' <StatementList> 'end'
-// <复合语句>       ::= 'begin' <语句表> 'end'
-
-<StatementList>     ::= <Statement> { ';' <Statement> }
-// <语句表>         ::= <语句> { ';' <语句> }
-
-<Statement>         ::= <AssignmentStatement>
-                    |   <IfStatement>
-                    |   <WhileStatement>
-                    |   <CompoundStatement>
-                    |   ε
-// <语句>            ::= <赋值语句> | <条件语句> | <循环语句> | <复合语句> | ε
 <CompoundStatement> ::= 'begin' <StatementList> 'end'
 // <复合语句>       ::= 'begin' <语句表> 'end'
 
@@ -140,5 +104,3 @@
 <Digit>        ::= 0 | 1 | ... | 9
 // <数字>        ::= 0 | 1 | ... | 9
 ```
-
-
