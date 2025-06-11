@@ -10,6 +10,13 @@
 #include <stdexcept>
 #include <memory>
 
+void print_operand_details(const std::string& label, const Operand& op) {
+    std::cout << label << " -> "
+              << "Type: " << static_cast<int>(op.type)
+              << ", Name: '" << op.name << "'"
+              << ", Index: " << op.index << std::endl;
+}
+
 /**
  * @brief Parser 构造函数。
  * @param lexer 对词法分析器的引用，用于获取 Token。
@@ -100,9 +107,13 @@ void Parser::backpatch(int quad_index, int target_label) {
  * 这是顶层语法规则，定义了一个完整程序的结构。
  */
 void Parser::program() {
+    if (table.get_keyword_table()[current_token.index - 1] != "program") 
+        throw std::runtime_error("Syntax error: Expected 'program'.");
     match(TokenCategory::KEYWORD); // 'program'
     match(TokenCategory::IDENTIFIER);
     block();
+    if (table.get_operator_table()[current_token.index - 1] != ".")
+        throw std::runtime_error("Syntax error: Expected '.'.");
     match(TokenCategory::OPERATOR); // '.'
 }
 
@@ -319,8 +330,10 @@ std::vector<Token> Parser::identifier_list() {
  * @brief 解析 <CompoundStatement> ::= begin <StatementList> end
  */
 void Parser::compound_statement() {
+    if (table.get_keyword_table()[current_token.index - 1] != "begin") throw std::runtime_error("Syntax error: Expected 'begin'.");
     match(TokenCategory::KEYWORD); // 'begin'
     statement_list();
+    if (table.get_keyword_table()[current_token.index - 1] != "end") throw std::runtime_error("Syntax error: Expected 'end'.");
     match(TokenCategory::KEYWORD); // 'end'
 }
 
@@ -360,6 +373,7 @@ void Parser::statement() {
         if (keyword == "if") if_statement();
         else if (keyword == "while") while_statement();
         else if (keyword == "begin") compound_statement();
+        else if (keyword == "print") print_statement();
     }
     // ε (empty statement) is handled by advancing past a semicolon
 }
@@ -373,6 +387,7 @@ void Parser::assignment_statement() {
     if (!left_entry) throw std::runtime_error("Semantic error: Undeclared identifier '" + id_name + "'.");
     
     match(TokenCategory::IDENTIFIER);
+    if (table.get_operator_table()[current_token.index - 1] != ":=") throw std::runtime_error("Syntax error: Expected ':='.");
     match(TokenCategory::OPERATOR); // ':='
     
     Operand right = expression();
@@ -380,12 +395,55 @@ void Parser::assignment_statement() {
     // Check for function return value assignment
     if (left_entry->category == SymbolCategory::FUNCTION && left_entry->scope_level == table.get_current_scope_level() -1) {
          emit(OpCode::RETURN, right, {}, {});
-    } else {
-        Operand left = {Operand::Type::IDENTIFIER, left_entry->address, left_entry->name};
-        emit(OpCode::ASSIGN, right, {}, left);
+         return;
     }
-}
 
+    Operand left = {Operand::Type::IDENTIFIER, left_entry->address, left_entry->name};
+
+    // +++ 集成常量折叠优化 +++
+    // 检查：如果 expression() 的结果是一个临时变量，并且上一条指令是对这个临时变量的赋值
+    if (right.type == Operand::Type::TEMPORARY && !quadruples.empty()) {
+        Quadruple& last_quad = quadruples.back();
+        
+        // 模式一：上一条是 t_i := const1 op const2 (例如 t0 := 0.5 + 0.5)
+        if (last_quad.result.name == right.name &&
+            (last_quad.op == OpCode::ADD || last_quad.op == OpCode::SUB || last_quad.op == OpCode::MUL || last_quad.op == OpCode::DIV) &&
+            last_quad.arg1.type == Operand::Type::CONSTANT &&
+            last_quad.arg2.type == Operand::Type::CONSTANT)
+        {
+            // 在这里当场进行常量折叠！
+            double v1 = table.get_constant_table()[last_quad.arg1.index];
+            double v2 = table.get_constant_table()[last_quad.arg2.index];
+            double result_val;
+            switch (last_quad.op) {
+                case OpCode::ADD: result_val = v1 + v2; break;
+                case OpCode::SUB: result_val = v1 - v2; break;
+                case OpCode::MUL: result_val = v1 * v2; break;
+                case OpCode::DIV: result_val = (v2 != 0) ? v1 / v2 : 0; break; // 注意处理除以零
+                default: result_val = 0; // 不应发生
+            }
+            
+            // 直接修改上一条指令，把它变成一条干净的赋值指令 left := result_val
+            int const_index = table.lookup_or_add_constant(result_val);
+            last_quad.op = OpCode::ASSIGN;
+            last_quad.arg1 = { Operand::Type::CONSTANT, const_index, std::to_string(result_val) };
+            last_quad.arg2 = {};
+            last_quad.result = left;
+            return;
+        } 
+        // 模式二：上一条是 t_i := some_variable
+        else if (last_quad.result.name == right.name &&
+                 last_quad.op == OpCode::ASSIGN)
+        {
+            // 直接修改上一条指令，让它直接赋值给目标变量
+            last_quad.result = left;
+            return;
+        }
+    } 
+
+    // 如果不匹配任何优化模式，或 expression() 返回的不是临时变量，则按原样生成赋值指令
+    emit(OpCode::ASSIGN, right, {}, left);
+}
 
 /**
  * @brief 解析 <SubprogramCall>
@@ -431,13 +489,13 @@ Operand Parser::subprogram_call(SymbolEntry* symbol) {
     }
 }
 
-
 /**
  * @brief 解析 <IfStatement> ::= if <Condition> then <Statement> [else <Statement>]
  */
 void Parser::if_statement() {
     match(TokenCategory::KEYWORD); // 'if'
     Operand cond = condition();
+    if (table.get_keyword_table()[current_token.index - 1] != "then") throw std::runtime_error("Syntax error: Expected 'then'.");
     match(TokenCategory::KEYWORD); // 'then'
     
     int false_jump_quad = quadruples.size();
@@ -464,6 +522,7 @@ void Parser::while_statement() {
     match(TokenCategory::KEYWORD); // 'while'
     int loop_start = quadruples.size();
     Operand cond = condition();
+    if (table.get_keyword_table()[current_token.index - 1] != "do") throw std::runtime_error("Syntax error: Expected 'do'.");
     match(TokenCategory::KEYWORD); // 'do'
 
     int false_jump_quad = quadruples.size();
@@ -473,6 +532,29 @@ void Parser::while_statement() {
     
     emit(OpCode::JMP, {}, {}, {Operand::Type::LABEL, loop_start, "L" + std::to_string(loop_start)});
     backpatch(false_jump_quad, quadruples.size());
+}
+
+/**
+ * @brief 解析 <PrintStatement> ::= print ( <Expression> )
+ */
+void Parser::print_statement() {
+    match(TokenCategory::KEYWORD); // 消耗 'print' 关键字
+
+    if (table.get_operator_table()[current_token.index - 1] != "(") {
+        throw std::runtime_error("Syntax error: Expected '('.");
+    }
+    match(TokenCategory::OPERATOR); // 消耗 '('
+
+    // 解析括号内的表达式，它的结果就是要打印的东西
+    Operand expr_to_print = expression();
+
+    if (table.get_operator_table()[current_token.index - 1] != ")") {
+        throw std::runtime_error("Syntax error: Expected ')'.");
+    }
+    match(TokenCategory::OPERATOR); // 消耗 ')'
+
+    // 生成一条新的 PRINT 四元式
+    emit(OpCode::PRINT, expr_to_print, {}, {});
 }
 
 /**

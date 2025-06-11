@@ -2,6 +2,8 @@
 #include <iostream>
 #include <iomanip>
 #include <map>
+#include <vector>
+#include "../parser/Parser.h"
 
 void Printer::print_lexical_output(const std::vector<Token>& tokens, SymbolTable& symbol_table) {
     std::cout << "词法分析阶段输出:" << std::endl;
@@ -96,16 +98,29 @@ std::string opcode_to_string(OpCode op) {
 
 // Helper to convert Operand to string
 std::string operand_to_string(const Operand& op, SymbolTable& symbol_table) {
-    if (op.name.empty() && op.type != Operand::Type::LABEL) {
-        return "_";
+    if (op.type == Operand::Type::NONE) {
+        return "-";
     }
+    
+    std::stringstream ss;
     switch(op.type) {
-        case Operand::Type::IDENTIFIER: return op.name;
-        case Operand::Type::TEMPORARY:  return op.name;
-        case Operand::Type::CONSTANT:  return std::to_string(symbol_table.get_constant_table()[op.index]);
-        case Operand::Type::LABEL:     return op.name;
-        default: return "?";
+        case Operand::Type::IDENTIFIER:
+            ss << op.name;
+            break;
+        case Operand::Type::TEMPORARY:
+            ss << op.name;
+            break;
+        case Operand::Type::CONSTANT:
+            ss << symbol_table.get_constant_table()[op.index];
+            break;
+        case Operand::Type::LABEL:
+            ss << "L" << op.index;
+            break;
+        case Operand::Type::NONE:
+            ss << "-";
+            break;
     }
+    return ss.str();
 }
 
 void Printer::print_semantic_output(const std::vector<Quadruple>& quadruples, SymbolTable& symbol_table) {
@@ -119,9 +134,9 @@ void Printer::print_semantic_output(const std::vector<Quadruple>& quadruples, Sy
         const auto& q = quadruples[i];
         std::cout << std::left << std::setw(4) << i
                   << "(" << std::setw(4) << opcode_to_string(q.op) << ", "
-                  << std::setw(9) << operand_to_string(q.arg1, symbol_table) << ", "
-                  << std::setw(9) << operand_to_string(q.arg2, symbol_table) << ", "
-                  << std::setw(9) << operand_to_string(q.result, symbol_table) << ")" << std::endl;
+                  << std::setw(8) << operand_to_string(q.arg1, symbol_table) << ", "
+                  << std::setw(8) << operand_to_string(q.arg2, symbol_table) << ", "
+                  << std::setw(8) << operand_to_string(q.result, symbol_table) << ")" << std::endl;
     }
     std::cout << std::endl;
 

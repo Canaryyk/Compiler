@@ -16,7 +16,8 @@
                 "${workspaceFolder}/src/semantic_analyzer/*.cpp",
                 "${workspaceFolder}/src/utils/*.cpp",
                 "-o",
-                "${workspaceFolder}/build/compiler_app.exe"
+                "${workspaceFolder}/build/compiler_app.exe",
+                "${workspaceFolder}/src/optimizer/*.cpp"
             ],
             "group": "build",
             "presentation": {

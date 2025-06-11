@@ -1,10 +1,14 @@
 #include <iostream>
 #include <fstream>
 #include <sstream>
+#include <unordered_map>
+#include <set>
+#include <algorithm>
 #include "semantic_analyzer/SymbolTable.h"
 #include "lexer/Lexer.h"
 #include "parser/Parser.h"
 #include "utils/Printer.h"
+#include "optimizer/Optimizer.h"
 
 int main() {
     std::string file_path = "examples/test_lexical.txt";
@@ -34,15 +38,37 @@ int main() {
 
     // --- 语法、语义分析和中间代码生成 ---
     try {
-        Parser parser(lexer, symbol_table);
-        parser.parse();
+    Parser parser(lexer, symbol_table);
+    parser.parse();
+    auto raw_quads = parser.get_quadruples();
+    
+    // 在 parser.parse() 之后
+    std::cout << "Raw quads size: " << raw_quads.size() << std::endl;
+    
+    // 打印原始四元式
+    std::cout << "\n原始四元式：" << std::endl;
+    Printer::print_semantic_output(raw_quads, symbol_table);
+    
+    try {
+        // 调用优化器
+        auto optimized_quads = Optimizer::optimize(raw_quads, symbol_table);
 
-        // 打印语义分析结果
-        Printer::print_semantic_output(parser.get_quadruples(), symbol_table);
-    } catch (const std::runtime_error& e) {
-        std::cerr << e.what() << std::endl;
-        return 1;
+        // 在优化之后
+        std::cout << "\n优化后四元式：" << std::endl;
+        std::cout << "Optimized quads size: " << optimized_quads.size() << std::endl;
+
+        // 打印优化后中间代码
+        Printer::print_semantic_output(optimized_quads, symbol_table);
+    } catch (const std::exception& e) {
+        std::cerr << "优化过程中出现错误: " << e.what() << std::endl;
+        std::cerr << "将使用未优化的四元式继续执行。" << std::endl;
+        // 使用原始四元式继续
+        Printer::print_semantic_output(raw_quads, symbol_table);
     }
-
+  } 
+    catch (const std::runtime_error& e) {
+    std::cerr << e.what() << std::endl;
+    return 1;
+    }
     return 0;
 }

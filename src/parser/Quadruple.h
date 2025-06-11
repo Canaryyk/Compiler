@@ -1,10 +1,3 @@
-/**
- * @file Quadruple.h
- * @brief 定义了用于中间代码生成的四元式结构。
- *
- * 四元式是一种常见的中间表示形式，格式为 (operator, argument1, argument2, result)。
- * 它将源程序的复杂结构分解为一系列简单的、类似汇编语言的指令。
- */
 #ifndef QUADRUPLE_H
 #define QUADRUPLE_H
 
@@ -12,9 +5,7 @@
 #include <variant>
 #include "../semantic_analyzer/SymbolTable.h"
 
-/**
- * @brief 四元式中的操作码，定义了指令的类型。
- */
+// 操作码
 enum class OpCode {
     // --- 算术运算 ---
     ADD, ///< 加法 (result = arg1 + arg2)
@@ -43,53 +34,42 @@ enum class OpCode {
     RETURN, ///< 从一个函数返回一个值 (return arg1)
     
     // --- 占位符 ---
-    NO_OP  ///< 空操作，不执行任何动作
+    NO_OP,  ///< 空操作，不执行任何动作
+    PRINT,
+    NONE,
+    LABEL
 };
 
+// 将 OpCode 转换为字符串表示，方便打印
+std::string opcode_to_string(OpCode op);
 
-/**
- * @brief 代表四元式中的一个操作数。
- * 它可以是变量、常量、临时变量或一个跳转目标（标签）。
- */
+
+// 操作数
 struct Operand {
-    /**
-     * @brief 操作数的类型。
-     */
     enum class Type {
-        IDENTIFIER, ///< 标识符（变量/函数名等）。
-        CONSTANT,   ///< 常量。
-        TEMPORARY,  ///< 临时变量，由编译器在计算表达式时生成。
-        LABEL       ///< 标签，用于表示跳转指令的目标地址。
+        IDENTIFIER,
+        CONSTANT,
+        TEMPORARY,
+        LABEL,
+        NONE
     };
 
-    Type type; ///< 操作数的具体类型。
-    
-    /**
-     * @brief 在对应表中的索引。
-     * - 对于 IDENTIFIER: 是其在符号表 `symbol_entries` 中的地址 `address`。
-     * - 对于 CONSTANT: 是其在常量表 `constant_table` 中的索引。
-     * - 对于 TEMPORARY: 是临时变量的唯一编号。
-     * - 对于 LABEL: 是跳转目标的四元式索引。
-     */
-    int index; 
+    Type type;
+    int index; // 在对应表中的索引
 
-    /**
-     * @brief 操作数的可读名称，主要用于调试和输出。
-     * 例如，可以是变量名 "x"，临时变量名 "t1"，或标签名 "L2"。
-     */
+    // 为了方便调试，可以添加一个名称
     std::string name; 
 };
 
 
-/**
- * @brief 四元式结构体，定义了一个独立的中间代码指令。
- */
+// 四元式
 struct Quadruple {
-    OpCode op;      ///< 操作码。
-    Operand arg1;   ///< 第一个参数。
-    Operand arg2;   ///< 第二个参数。
-    Operand result; ///< 结果存放处或跳转目标。
+    OpCode op;
+    Operand arg1;
+    Operand arg2;
+    Operand result;
 };
+
 
 
 #endif // QUADRUPLE_H 

@@ -117,6 +117,7 @@ private:
     void assignment_statement();// <AssignmentStatement> ::= <Identifier> := <Expression>
     void if_statement();        // <IfStatement> ::= if <Condition> then <Statement> [else <Statement>]
     void while_statement();     // <WhileStatement> ::= while <Condition> do <Statement>
+    void print_statement();     // <PrintStatement> ::= print <Expression>
     Operand subprogram_call(SymbolEntry* symbol);   // <Identifier> '(' [ <ArgumentList> ] ')'
     
     // --- 表达式和条件解析 ---
@@ -126,5 +127,5 @@ private:
     Operand condition();        // <Condition> ::= <Expression> <RelationalOp> <Expression>
     OpCode relational_op();     // <RelationalOp> ::= = | <> | < | <= | > | >=
 };
-
+ std::string opcode_to_string(OpCode op);
 #endif // PARSER_H
