@@ -114,9 +114,9 @@ void Printer::print_semantic_output(const std::vector<Quadruple>& quadruples, Sy
         const auto& q = quadruples[i];
         std::cout << std::left << std::setw(4) << i
                   << "(" << std::setw(4) << opcode_to_string(q.op) << ", "
-                  << std::setw(8) << operand_to_string(q.arg1, symbol_table) << ", "
-                  << std::setw(8) << operand_to_string(q.arg2, symbol_table) << ", "
-                  << std::setw(8) << operand_to_string(q.result, symbol_table) << ")" << std::endl;
+                  << std::setw(9) << operand_to_string(q.arg1, symbol_table) << ", "
+                  << std::setw(9) << operand_to_string(q.arg2, symbol_table) << ", "
+                  << std::setw(9) << operand_to_string(q.result, symbol_table) << ")" << std::endl;
     }
     std::cout << std::endl;
 
