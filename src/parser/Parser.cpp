@@ -1,55 +1,31 @@
-/**
- * @file Parser.cpp
- * @brief 语法分析器的实现文件。
- *
- * 包含了 Parser 类中所有方法的具体实现，通过递归下降的方式
- * 对 Token 序列进行语法分析、语义检查和四元式中间代码生成。
- */
 #include "Parser.h"
 #include <iostream>
 #include <stdexcept>
 
-/**
- * @brief Parser 构造函数。
- * @param lexer 对词法分析器的引用，用于获取 Token。
- * @param table 对符号表的引用，用于符号管理和语义分析。
- */
+
+void print_operand_details(const std::string& label, const Operand& op) {
+    std::cout << label << " -> "
+              << "Type: " << static_cast<int>(op.type)
+              << ", Name: '" << op.name << "'"
+              << ", Index: " << op.index << std::endl;
+}
 Parser::Parser(Lexer& lexer, SymbolTable& table)
     : lexer(lexer), table(table), temp_counter(0), label_counter(0), current_address(0) {
     advance();
 }
 
-/**
- * @brief 启动语法分析过程。
- * 这是整个语法分析的入口点，它从顶层文法规则 <program> 开始。
- */
 void Parser::parse() {
     program();
 }
 
-/**
- * @brief 获取分析完成后生成的四元式序列。
- * @return 一个包含所有已生成四元式的 const vector 引用。
- */
 const std::vector<Quadruple>& Parser::get_quadruples() const {
     return quadruples;
 }
 
-/**
- * @brief 从词法分析器获取下一个 Token，并更新 current_token。
- * 这是分析器向前"看"一个符号的唯一方式。
- */
 void Parser::advance() {
     current_token = lexer.get_next_token();
 }
 
-/**
- * @brief 匹配并消耗一个期望的 Token。
- * 这是语法分析器的核心操作之一。它检查当前 Token 是否符合特定类别，
- * 如果符合，就调用 advance() 消耗掉它，让分析继续；否则，说明出现语法错误。
- * @param category 期望匹配的 Token 种类。
- * @throws std::runtime_error 如果当前 Token 与期望不符，抛出语法错误异常。
- */
 void Parser::match(TokenCategory category) {
     if (current_token.category == category) {
         advance();
@@ -58,11 +34,6 @@ void Parser::match(TokenCategory category) {
     }
 }
 
-/**
- * @brief 创建一个新的临时变量操作数。
- * 在处理表达式时，需要临时变量来存储中间计算结果。
- * @return 一个类型为 TEMPORARY 的新操作数。
- */
 Operand Parser::new_temp() {
     std::string temp_name = "t" + std::to_string(temp_counter);
     int index = temp_counter;
@@ -70,33 +41,14 @@ Operand Parser::new_temp() {
     return Operand{Operand::Type::TEMPORARY, index, temp_name};
 }
 
-/**
- * @brief 生成一条新的四元式并添加到序列的末尾。
- * 这是将分析结果转化为中间代码的关键步骤。
- * @param op 四元式的操作码。
- * @param arg1 第一个操作数。
- * @param arg2 第二个操作数。
- * @param result 结果操作数或跳转目标。
- */
 void Parser::emit(OpCode op, const Operand& arg1, const Operand& arg2, const Operand& result) {
     quadruples.push_back({op, arg1, arg2, result});
 }
 
-/**
- * @brief 回填。
- * 对于跳转指令（如 if, while），在生成时其跳转目标地址是未知的。
- * 当确定了目标地址后，调用此函数将地址填回到之前生成的四元式中。
- * @param quad_index 需要回填的四元式在序列中的索引。
- * @param target_label 跳转的目标标签（通常是另一条四元式的索引）。
- */
 void Parser::backpatch(int quad_index, int target_label) {
     quadruples[quad_index].result = {Operand::Type::LABEL, target_label, "L" + std::to_string(target_label)};
 }
 
-/**
- * @brief 解析 <Program> ::= program <Identifier> <Block> .
- * 这是顶层语法规则，定义了一个完整程序的结构。
- */
 void Parser::program() {
     if (table.get_keyword_table()[current_token.index - 1] != "program") 
         throw std::runtime_error("Syntax error: Expected 'program'.");
@@ -108,10 +60,6 @@ void Parser::program() {
     match(TokenCategory::OPERATOR);
 }
 
-/**
- * @brief 解析 <Block> ::= [<VarDeclarations>] <CompoundStatement>
- * 块是程序的基本组成单元，包含可选的变量声明和一条复合语句。
- */
 void Parser::block() {
     table.enter_scope();
     if (current_token.category == TokenCategory::KEYWORD && table.get_keyword_table()[current_token.index - 1] == "var") {
@@ -121,12 +69,8 @@ void Parser::block() {
     table.exit_scope();
 }
 
-/**
- * @brief 解析 <VarDeclarations> ::= var <IdentifierList> : <Type> ; ...
- * 处理变量声明部分。
- */
 void Parser::var_declarations() {
-    match(TokenCategory::KEYWORD);
+    match(TokenCategory::KEYWORD); // var
     while (current_token.category == TokenCategory::IDENTIFIER) {
         std::vector<Token> id_list = identifier_list();
         if (table.get_operator_table()[current_token.index-1] != ":") throw std::runtime_error("Syntax error: Expected ':'.");
@@ -164,10 +108,6 @@ void Parser::var_declarations() {
     }
 }
 
-/**
- * @brief 解析 <IdentifierList> ::= <Identifier> { , <Identifier> }
- * @return 包含所有已解析标识符 Token 的向量，用于后续的符号表操作。
- */
 std::vector<Token> Parser::identifier_list() {
     std::vector<Token> id_list;
     id_list.push_back(current_token);
@@ -180,10 +120,6 @@ std::vector<Token> Parser::identifier_list() {
     return id_list;
 }
 
-/**
- * @brief 解析 <CompoundStatement> ::= begin <StatementList> end
- * 复合语句是一个由 begin 和 end 包围的语句列表。
- */
 void Parser::compound_statement() {
     if (table.get_keyword_table()[current_token.index - 1] != "begin") throw std::runtime_error("Syntax error: Expected 'begin'.");
     match(TokenCategory::KEYWORD);
@@ -192,25 +128,17 @@ void Parser::compound_statement() {
     match(TokenCategory::KEYWORD);
 }
 
-/**
- * @brief 解析 <StatementList> ::= <Statement> { ; <Statement> }
- * 语句列表由一个或多个由分号分隔的语句构成。
- */
 void Parser::statement_list() {
     statement();
     while (current_token.category == TokenCategory::OPERATOR && table.get_operator_table()[current_token.index - 1] == ";") {
         advance();
-        if (current_token.category == TokenCategory::KEYWORD && table.get_keyword_table()[current_token.index-1] == "end") {
+        if (current_token.category == TokenCategory::KEYWORD && table.get_keyword_table()[current_token.index -1] == "end") {
             break;
         }
         statement();
     }
 }
 
-/**
- * @brief 解析 <Statement> ::= <AssignmentStatement> | <IfStatement> | <WhileStatement> | <CompoundStatement> | ...
- * 语句是程序执行的基本单位。
- */
 void Parser::statement() {
     if (current_token.category == TokenCategory::IDENTIFIER) {
         assignment_statement();
@@ -219,12 +147,11 @@ void Parser::statement() {
         if (keyword == "if") if_statement();
         else if (keyword == "while") while_statement();
         else if (keyword == "begin") compound_statement();
+        // +++ 新增对 print 语句的识别 +++
+        else if (keyword == "print") print_statement();
     }
 }
 
-/**
- * @brief 解析 <AssignmentStatement> ::= <Identifier> := <Expression>
- */
 void Parser::assignment_statement() {
     const auto& id_name = table.get_simple_identifier_table()[current_token.index - 1];
     SymbolEntry* left_entry = table.find_symbol(id_name);
@@ -237,12 +164,56 @@ void Parser::assignment_statement() {
     match(TokenCategory::OPERATOR);
     
     Operand right = expression();
-    emit(OpCode::ASSIGN, right, {}, left);
-}
 
-/**
- * @brief 解析 <IfStatement> ::= if <Condition> then <Statement> [else <Statement>]
- */
+    // ==================== 全新的、更强大的修改逻辑 ====================
+
+    // 检查：如果 expression() 的结果是一个临时变量，并且上一条指令是对这个临时变量的赋值
+    if (right.type == Operand::Type::TEMPORARY && !quadruples.empty()) {
+        Quadruple& last_quad = quadruples.back();
+        
+        // 模式一：上一条是 t0 := const1 op const2 (比如 t0 := 0.5 + 0.5)
+        if (last_quad.result.name == right.name &&
+            (last_quad.op == OpCode::ADD || last_quad.op == OpCode::SUB || last_quad.op == OpCode::MUL || last_quad.op == OpCode::DIV) &&
+            last_quad.arg1.type == Operand::Type::CONSTANT &&
+            last_quad.arg2.type == Operand::Type::CONSTANT)
+        {
+            // 在这里当场进行常量折叠！
+            double v1 = table.get_constant_table()[last_quad.arg1.index];
+            double v2 = table.get_constant_table()[last_quad.arg2.index];
+            double result_val;
+            switch (last_quad.op) {
+                case OpCode::ADD: result_val = v1 + v2; break;
+                case OpCode::SUB: result_val = v1 - v2; break;
+                case OpCode::MUL: result_val = v1 * v2; break;
+                case OpCode::DIV: result_val = (v2 != 0) ? v1 / v2 : 0; break;
+                default: result_val = 0; // Should not happen
+            }
+            
+            // 然后，直接修改上一条指令，把它变成一条干净的赋值指令 i := 1.0
+            int const_index = table.lookup_or_add_constant(result_val);
+            last_quad.op = OpCode::ASSIGN;
+            last_quad.arg1 = { Operand::Type::CONSTANT, const_index, std::to_string(result_val) };
+            last_quad.arg2 = {};
+            last_quad.result = left; // **直接赋值给 i (left)**
+
+        } 
+        // 模式二：上一条是 t0 := some_variable (未来可能出现)
+        else if (last_quad.result.name == right.name &&
+                 last_quad.op == OpCode::ASSIGN)
+        {
+            // 直接修改上一条指令，让它直接赋值给 i
+            last_quad.result = left;
+        }
+        else {
+            // 如果不匹配任何已知优化模式，则按原样生成赋值指令
+            emit(OpCode::ASSIGN, right, {}, left);
+        }
+    } else {
+        // 如果 expression() 返回的不是临时变量，也按原样生成
+        emit(OpCode::ASSIGN, right, {}, left);
+    }
+    // ===================== 修改结束 ====================
+}
 void Parser::if_statement() {
     match(TokenCategory::KEYWORD);
     Operand cond = condition();
@@ -266,9 +237,6 @@ void Parser::if_statement() {
     }
 }
 
-/**
- * @brief 解析 <WhileStatement> ::= while <Condition> do <Statement>
- */
 void Parser::while_statement() {
     match(TokenCategory::KEYWORD);
     int loop_start_addr = quadruples.size();
@@ -285,10 +253,28 @@ void Parser::while_statement() {
     backpatch(false_quad_idx, quadruples.size());
 }
 
-/**
- * @brief 解析 <Expression> ::= <Term> { (+|-) <Term> }
- * 表达式由一个或多个通过加法或减法运算符连接的项构成。
- */
+void Parser::print_statement() {
+    match(TokenCategory::KEYWORD); // 消耗 'print' 关键字
+
+    // 假设您的 match 函数可以检查操作符的字符串值
+    // 如果不能，您需要先匹配 OPERATOR，再检查其内容是否为 "("
+    if (table.get_operator_table()[current_token.index - 1] != "(") {
+        throw std::runtime_error("Syntax error: Expected '('.");
+    }
+    match(TokenCategory::OPERATOR); // 消耗 '('
+
+    // 解析括号内的表达式，它的结果就是要打印的东西
+    Operand expr_to_print = expression();
+
+    if (table.get_operator_table()[current_token.index - 1] != ")") {
+        throw std::runtime_error("Syntax error: Expected ')'.");
+    }
+    match(TokenCategory::OPERATOR); // 消耗 ')'
+
+    // 生成一条新的 PRINT 四元式
+    emit(OpCode::PRINT, expr_to_print, {}, {});
+}
+
 Operand Parser::expression() {
     Operand left = term();
     while (current_token.category == TokenCategory::OPERATOR) {
@@ -307,10 +293,6 @@ Operand Parser::expression() {
     return left;
 }
 
-/**
- * @brief 解析 <Term> ::= <Factor> { (*|/) <Factor> }
- * 项由一个或多个通过乘法或除法运算符连接的因子构成。
- */
 Operand Parser::term() {
     Operand left = factor();
     while (current_token.category == TokenCategory::OPERATOR) {
@@ -329,10 +311,6 @@ Operand Parser::term() {
     return left;
 }
 
-/**
- * @brief 解析 <Factor> ::= <Identifier> | <Constant> | ( <Expression> )
- * 因子是表达式的最基本单元。
- */
 Operand Parser::factor() {
     Operand op;
     if (current_token.category == TokenCategory::IDENTIFIER) {
@@ -356,10 +334,6 @@ Operand Parser::factor() {
     return op;
 }
 
-/**
- * @brief 解析 <Condition> ::= <Expression> <RelationalOp> <Expression>
- * 条件是用于 if 和 while 语句的布尔表达式。
- */
 Operand Parser::condition() {
     Operand left = expression();
     OpCode op = relational_op();
@@ -369,10 +343,6 @@ Operand Parser::condition() {
     return result;
 }
 
-/**
- * @brief 解析 <RelationalOp> ::= = | <> | < | <= | > | >=
- * 匹配一个关系操作符并返回对应的操作码。
- */
 OpCode Parser::relational_op() {
     if (current_token.category == TokenCategory::OPERATOR) {
         const auto& op_str = table.get_operator_table()[current_token.index - 1];
@@ -389,3 +359,29 @@ OpCode Parser::relational_op() {
     }
     throw std::runtime_error("Expected relational operator.");
 }
+
+std::string opcode_to_string(OpCode op) {
+    switch(op) {
+        case OpCode::ADD: return "+";
+        case OpCode::SUB: return "-";
+        case OpCode::MUL: return "*";
+        case OpCode::DIV: return "/";
+        case OpCode::ASSIGN: return ":=";
+        case OpCode::EQ: return "=";
+        case OpCode::NE: return "<>";
+        case OpCode::LT: return "<";
+        case OpCode::LE: return "<=";
+        case OpCode::GT: return ">";
+        case OpCode::GE: return ">=";
+        case OpCode::JUMP: return "j";
+        case OpCode::JUMP_IF_FALSE: return "j<";
+        case OpCode::PARAM: return "param";
+        case OpCode::CALL: return "call";
+        case OpCode::RET: return "ret";
+        case OpCode::NO_OP: return "noop";
+        case OpCode::PRINT: return "PRINT";
+        case OpCode::NONE: return "none";
+        case OpCode::LABEL: return "label";
+        default: return "op?";
+    }
+} 

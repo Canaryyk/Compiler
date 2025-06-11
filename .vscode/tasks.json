@@ -16,7 +16,8 @@
                 "${workspaceFolder}/src/semantic_analyzer/*.cpp",
                 "${workspaceFolder}/src/utils/*.cpp",
                 "-o",
-                "${workspaceFolder}/build/compiler_app.exe"
+                "${workspaceFolder}/build/compiler_app.exe",
+                "${workspaceFolder}/src/optimizer/*.cpp",
             ],
             "group": "build",
             "presentation": {
@@ -31,7 +32,7 @@
         {
             "type": "cppbuild",
             "label": "C/C++: g++.exe 生成活动文件",
-            "command": "C:\\mingw64\\bin\\g++.exe",
+            "command": "D:/msys2/ucrt64/bin/g++.exe",
             "args": [
                 "-fdiagnostics-color=always",
                 "-g",
