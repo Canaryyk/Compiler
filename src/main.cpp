@@ -12,7 +12,27 @@
 #include "parser/Parser.h"
 #include "parser/Quadruple.h"
 #include "optimizer/optimizer.h"
+#include "target_code_generator/TargetCodeGenerator.h"
 
+//
+// 使用方法:
+// ./compiler --input <file_path> --target <tokens|quads|symbols|target_code>
+//
+// 示例:
+// ./compiler --input ../examples/test_lexical.txt --target tokens
+// ./compiler --input ../examples/test_semantic.txt --target quads
+// ./compiler --input ../examples/test_semantic.txt --target symbols
+// ./compiler --input ../examples/test_semantic.txt --target target_code
+//
+
+// 为新的目标代码结构添加 to_json 函数
+void to_json(nlohmann::json& j, const TargetCodeLine& line) {
+    j = nlohmann::json{{"line", line.line_number}, {"code", line.code}};
+}
+
+void print_usage() {
+    std::cerr << "Usage: compiler --input <file_path> --target <tokens|quads|symbols|target_code>" << std::endl;
+}
 
 int main(int argc, char* argv[]) {
     std::string input_file;
@@ -54,7 +74,7 @@ int main(int argc, char* argv[]) {
             // 这里将调用为 vector<Token> 定制的 to_json
             to_json(json_output, all_tokens, symbol_table);
 
-        } else if (target == "quads" || target == "symbols") {
+        } else if (target == "quads" || target == "symbols" || target == "target_code") {
             Parser parser(lexer, symbol_table);
             parser.parse();
 
@@ -70,12 +90,21 @@ int main(int argc, char* argv[]) {
                     {"before", before},
                     {"after", after}
                 };
-            } else { // target == "symbols"
+            } else if (target == "symbols") {
                 json_output = symbol_table.to_json(); // 使用 SymbolTable 的 to_json 方法
+            } else { // target == "target_code"
+                const auto& original_quads = parser.get_quadruples();
+                auto optimized_quads = Optimizer::optimize(original_quads, symbol_table);
+                
+                TargetCodeGenerator code_gen;
+                auto target_code = code_gen.generate(optimized_quads, symbol_table);
+                
+                nlohmann::json target_code_json;
+                to_json(target_code_json, target_code);
+                json_output = target_code_json;
             }
         } else {
             std::cerr << "错误：无效的目标 '" << target << "'" << std::endl;
-            print_usage();
             return 1;
         }
 

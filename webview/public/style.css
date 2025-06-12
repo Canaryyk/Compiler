@@ -1,173 +1,227 @@
-body {
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+/* --- Google Fonts Import --- */
+@import url('https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600&family=Roboto+Mono:wght@400;500&display=swap');
+
+/* --- CSS Variables (Dark Theme) --- */
+:root {
+    --dark-bg: #1a1b26;
+    --dark-surface: #24283b;
+    --dark-text: #c0caf5;
+    --dark-text-secondary: #a9b1d6;
+    --dark-primary: #7aa2f7;
+    --dark-primary-hover: #9eceff;
+    --dark-border: #414868;
+    --dark-error: #f7768e;
+    --font-primary: 'Poppins', sans-serif;
+    --font-mono: 'Roboto Mono', monospace;
+}
+
+/* --- General Resets & Body --- */
+* {
+    box-sizing: border-box;
     margin: 0;
-    padding: 20px;
-    background-color: #1a1a1a;
-    color: #e0e0e0;
+    padding: 0;
 }
 
-.container {
-    max-width: 1600px;
-    margin: 0 auto;
-}
-
-h1, h2 {
-    color: #4CAF50;
-    border-bottom: 2px solid #333;
-    padding-bottom: 10px;
-}
-
-.main-content {
-    display: flex;
-    gap: 20px;
-}
-
-.editor-container, .output-container {
-    flex: 1;
-    background-color: #262626;
-    padding: 20px;
-    border-radius: 8px;
-    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.5);
+body {
+    font-family: var(--font-primary);
+    background-color: var(--dark-bg);
+    color: var(--dark-text);
+    line-height: 1.6;
     display: flex;
     flex-direction: column;
+    height: 100vh;
+    overflow: hidden; /* Prevent body scroll */
 }
 
-.CodeMirror {
-    height: 500px;
-    border: 1px solid #333;
-    border-radius: 4px;
-    font-size: 14px;
+h1, h2, h3, h4 {
+    color: var(--dark-text);
+    margin-bottom: 0.75rem;
+    font-weight: 500;
+}
+
+h1 { font-size: 1.8rem; }
+h2 { font-size: 1.5rem; border-bottom: 1px solid var(--dark-border); padding-bottom: 0.5rem; margin-top: 1rem; }
+h3 { font-size: 1.2rem; }
+h4 { font-size: 1rem; }
+
+/* --- Main Layout --- */
+.main-container {
+    display: flex;
     flex-grow: 1;
+    height: calc(100vh - 50px); /* Adjust based on header height */
+    padding: 1rem;
+    gap: 1rem;
 }
 
+.editor-container {
+    display: flex;
+    flex-direction: column;
+    width: 45%;
+    background-color: var(--dark-surface);
+    border-radius: 8px;
+    padding: 1rem;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+}
+
+.output-container {
+    width: 55%;
+    background-color: var(--dark-surface);
+    border-radius: 8px;
+    padding: 1rem;
+    overflow-y: auto; /* Allow scrolling only for the output */
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+}
+
+/* --- Controls (Buttons & Select) --- */
 .controls {
     display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-top: 15px;
+    gap: 0.75rem;
+    flex-wrap: wrap;
+    margin-top: 1rem;
+    padding-top: 1rem;
+    border-top: 1px solid var(--dark-border);
 }
 
-.target-selector label {
-    margin-right: 15px;
-    cursor: pointer;
-}
-
-#compile-btn {
-    background-color: #4CAF50;
-    color: white;
+.controls button, .controls select {
+    font-family: var(--font-primary);
+    background-color: var(--dark-primary);
+    color: #fff;
     border: none;
-    padding: 12px 20px;
-    text-align: center;
-    text-decoration: none;
-    display: inline-block;
-    font-size: 16px;
+    padding: 0.6rem 1rem;
     border-radius: 5px;
     cursor: pointer;
-    transition: background-color 0.3s;
-}
-
-#compile-btn:hover {
-    background-color: #45a049;
-}
-
-#output-display {
-    background-color: #1e1e1e;
-    border: 1px solid #333;
-    padding: 15px;
-    height: 100%;
-    min-height: 500px; /* Match editor height */
-    overflow-x: auto;
-    white-space: pre-wrap;
-    word-wrap: break-word;
-    border-radius: 4px;
-    font-family: 'Courier New', Courier, monospace;
-    font-size: 14px;
+    font-size: 0.9rem;
+    font-weight: 500;
+    transition: background-color 0.2s ease, transform 0.2s ease;
     flex-grow: 1;
 }
 
-.error-message {
-    color: #ff6b6b;
-    background-color: rgba(255, 82, 82, 0.1);
-    border: 1px solid #ff5252;
-    padding: 15px;
-    margin-top: 10px;
-    border-radius: 4px;
-    white-space: pre-wrap;
+.controls button:hover, .controls select:hover {
+    background-color: var(--dark-primary-hover);
+    color: var(--dark-bg);
+    transform: translateY(-2px);
 }
 
-.spinner {
-    border: 4px solid rgba(255, 255, 255, 0.3);
-    border-radius: 50%;
-    border-top: 4px solid #4CAF50;
-    width: 40px;
-    height: 40px;
-    animation: spin 1s linear infinite;
-    margin: 20px auto;
+.controls select {
+    -webkit-appearance: none;
+    -moz-appearance: none;
+    appearance: none;
+    background-image: url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6 9 12 15 18 9'%3e%3c/polyline%3e%3c/svg%3e");
+    background-repeat: no-repeat;
+    background-position: right 0.7rem center;
+    background-size: 1em;
+    padding-right: 2.5rem;
 }
 
-@keyframes spin {
-    0% { transform: rotate(0deg); }
-    100% { transform: rotate(360deg); }
-}
-
-/* New styles for rendered HTML content */
-.output-container h3 {
-    margin-top: 1.2rem;
-    margin-bottom: 0.8rem;
-    color: #82aaff;
-    border-bottom: 1px solid #4f5b66;
-    padding-bottom: 5px;
-}
-
-.output-container h4 {
-    margin-top: 0.8rem;
-    margin-bottom: 0.5rem;
-    color: #c3e88d;
-}
-
-.code-block {
-    background-color: #263238;
-    padding: 1em;
+/* --- CodeMirror Editor --- */
+.CodeMirror {
+    flex-grow: 1;
+    border: 1px solid var(--dark-border);
     border-radius: 5px;
-    font-family: 'Fira Code', 'Courier New', monospace;
-    white-space: pre-wrap; /* Ensures long lines wrap */
-    line-height: 1.5;
+    height: auto;
+    font-family: var(--font-mono);
+}
+.cm-s-material-darker.CodeMirror {
+    background-color: #212121; /* Match theme */
 }
 
-.table-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-    gap: 1.5rem;
+/* --- Output Tables --- */
+.table-container {
+    margin-bottom: 2rem;
 }
 
 .table-wrapper {
-    overflow-x: auto;
+    margin-bottom: 1.5rem;
 }
 
-.compiler-table {
+table {
     width: 100%;
     border-collapse: collapse;
-    margin-top: 0.5rem;
-    font-size: 0.9em;
+    font-size: 0.9rem;
 }
 
-.compiler-table th,
-.compiler-table td {
-    border: 1px solid #4f5b66;
-    padding: 8px 12px;
+th, td {
+    padding: 0.75rem;
     text-align: left;
+    border-bottom: 1px solid var(--dark-border);
 }
 
-.compiler-table th {
-    background-color: #3c4655;
-    color: #c3e88d;
-    font-weight: bold;
+th {
+    background-color: rgba(65, 72, 104, 0.5); /* Semi-transparent header */
+    font-weight: 600;
 }
 
-.compiler-table tbody tr:nth-child(odd) {
-    background-color: #2f3842;
+tbody tr:nth-child(even) {
+    background-color: rgba(255, 255, 255, 0.03);
 }
 
-.compiler-table tbody tr:hover {
-    background-color: #4a5462;
+tbody tr:hover {
+    background-color: rgba(122, 162, 247, 0.1);
+}
+
+td.separator {
+    text-align: center;
+    font-family: var(--font-mono);
+    font-weight: 500;
+    color: var(--dark-text-secondary);
+    background-color: rgba(65, 72, 104, 0.3);
+    letter-spacing: 2px;
+}
+
+/* --- Code Blocks & Other Output --- */
+.code-block {
+    background-color: var(--dark-bg);
+    padding: 1rem;
+    border-radius: 5px;
+    border: 1px solid var(--dark-border);
+    font-family: var(--font-mono);
+    white-space: pre-wrap;
+    word-break: break-all;
+    margin-bottom: 1rem;
+}
+
+#error-display {
+    background-color: rgba(247, 118, 142, 0.1);
+    border: 1px solid var(--dark-error);
+    color: var(--dark-error);
+    padding: 1rem;
+    border-radius: 5px;
+    white-space: pre-wrap;
+}
+
+/* --- Grid for Tables --- */
+.table-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: 1.5rem;
+}
+
+/* --- Spinner --- */
+.spinner {
+    border: 4px solid rgba(255, 255, 255, 0.1);
+    border-left-color: var(--dark-primary);
+    border-radius: 50%;
+    width: 40px;
+    height: 40px;
+    animation: spin 1s linear infinite;
+    margin: 2rem auto;
+}
+
+@keyframes spin {
+    to { transform: rotate(360deg); }
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar {
+    width: 10px;
+}
+::-webkit-scrollbar-track {
+    background: var(--dark-bg);
+}
+::-webkit-scrollbar-thumb {
+    background: var(--dark-border);
+    border-radius: 5px;
+}
+::-webkit-scrollbar-thumb:hover {
+    background: var(--dark-primary);
 } 

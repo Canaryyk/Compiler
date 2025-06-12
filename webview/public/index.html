@@ -3,38 +3,95 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Compiler Visualizer</title>
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/lib/codemirror.css">
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/theme/material-darker.css">
+    <title>Compiler Frontend</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600&family=Roboto+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/codemirror.min.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/theme/material-darker.min.css">
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
-    <div class="container">
-        <h1>Compiler Visualizer</h1>
-        <div class="main-content">
-            <div class="editor-container">
-                <h2>测试代码</h2>
-                <textarea id="code-editor"></textarea>
-                <div class="controls">
-                    <div class="target-selector">
-                        <label><input type="radio" name="target" value="tokens" checked> Tokens</label>
-                        <label><input type="radio" name="target" value="quads"> Quadruples</label>
-                        <label><input type="radio" name="target" value="symbols"> Symbol Table</label>
-                    </div>
-                    <button id="compile-btn">Compile & Visualize</button>
+    <div class="main-container">
+        <div class="editor-container">
+            <h1>Compiler Lab</h1>
+            <textarea id="code-editor"></textarea>
+            <div class="controls">
+                <select id="example-select">
+                    <option value="lexical">Lexical Analysis Example</option>
+                    <option value="semantic">Semantic Analysis Example</option>
+                    <option value="optimizer">Optimizer Example</option>
+                </select>
+                <button id="compile-btn-tokens">Lexical Analysis</button>
+                <button id="compile-btn-quads">Generate Quads</button>
+                <button id="compile-btn-symbols">Symbol Table</button>
+                <button id="compile-btn-target-code">Target Code</button>
+            </div>
+        </div>
+        <div class="output-container">
+            <div id="token-table-container" class="table-container" style="display: none;">
+                <!-- Token-specific content will be generated here by app.js -->
+            </div>
+
+            <div id="quad-table-container" class="table-container" style="display: none;">
+                <div id="quads-before-container">
+                    <h2>Quads (Before Optimization)</h2>
+                    <table id="quad-table-before">
+                        <thead>
+                            <tr>
+                                <th>Line</th>
+                                <th>Op</th>
+                                <th>Arg1</th>
+                                <th>Arg2</th>
+                                <th>Result</th>
+                            </tr>
+                        </thead>
+                        <tbody></tbody>
+                    </table>
+                </div>
+                <div id="quads-after-container">
+                    <h2>Quads (After Optimization)</h2>
+                    <table id="quad-table-after">
+                        <thead>
+                            <tr>
+                                <th>Line</th>
+                                <th>Op</th>
+                                <th>Arg1</th>
+                                <th>Arg2</th>
+                                <th>Result</th>
+                            </tr>
+                        </thead>
+                        <tbody></tbody>
+                    </table>
                 </div>
             </div>
-            <div class="output-container">
-                <h2>编译输出</h2>
-                <div id="loading-spinner" class="spinner" style="display: none;"></div>
-                <pre id="output-display"></pre>
-                <div id="error-display" class="error-message"></div>
+
+            <div id="target-code-container" class="table-container" style="display: none;">
+                <h2>Target Code</h2>
+                <table id="target-code-table">
+                    <thead>
+                        <tr>
+                            <th>Line</th>
+                            <th>Instruction</th>
+                        </tr>
+                    </thead>
+                    <tbody></tbody>
+                </table>
             </div>
+
+            <div id="symbol-table-container" class="table-container" style="display: none;">
+                <!-- Symbol-table-specific content will be generated here by app.js -->
+            </div>
+
+            <!-- This is a fallback for raw JSON, should be hidden most of the time -->
+            <div id="loading-spinner" class="spinner" style="display: none;"></div>
+            <pre id="output-display" style="display: none;"></pre>
+            <div id="error-display" style="display: none;"></div>
         </div>
     </div>
 
-    <script src="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/lib/codemirror.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/mode/pascal/pascal.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/codemirror.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/mode/pascal/pascal.min.js"></script>
     <script src="app.js"></script>
 </body>
 </html> 

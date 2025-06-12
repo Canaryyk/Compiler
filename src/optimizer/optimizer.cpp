@@ -7,21 +7,22 @@
 #include <iostream>
 #include "../parser/Parser.h"
 
-// 辅助结构体可以保留在文件作用域
+// 主要用于公共子表达式消除
 struct Expression {
     OpCode op;
     std::string arg1_name;
     std::string arg2_name;
-
+    //用于在map中比较两个表达式是否相同
     bool operator==(const Expression& other) const {
         return op == other.op && arg1_name == other.arg1_name && arg2_name == other.arg2_name;
     }
 };
-
+// 为 Expression 结构体提供哈希函数特化，使其能作为 std::unordered_map 的键
 namespace std {
     template <>
     struct hash<Expression> {
         size_t operator()(const Expression& e) const {
+             // 将操作码、第一个参数名和第二个参数名的哈希值组合起来，
             size_t h1 = hash<int>()(static_cast<int>(e.op));
             size_t h2 = hash<string>()(e.arg1_name);
             size_t h3 = hash<string>()(e.arg2_name);
@@ -30,8 +31,9 @@ namespace std {
     };
 }
 
-// 声明一个仅在当前文件可见的辅助函数
+// 作用：消除基本块内的冗余存储，例如 `x:=1; x:=2;` 会被优化为 `x:=2;`
 static void eliminate_redundant_stores_in_block(std::vector<Quadruple>& block_quads);
+// 作用：消除基本块内的临时变量折叠，例如 `temp:=1+2; x:=temp;` 会被优化为 `x:=3;`
 static void fold_temps_in_block(std::vector<Quadruple>& block_quads, const std::set<std::string>& live_out);
 
 // ===================================================================
@@ -67,7 +69,7 @@ std::vector<Quadruple> Optimizer::optimize(const std::vector<Quadruple>& quads, 
                 label_quad.op = OpCode::LABEL;
                 label_quad.result.type = Operand::Type::LABEL;
                 label_quad.result.index = next_label_id;
-                // 为了方便调试，我们给标签一个名字
+                // 为了方便调试，给标签一个名字
                 label_quad.result.name = "L" + std::to_string(next_label_id);
                 labeled_quads.push_back(label_quad);
                 next_label_id++;
@@ -76,7 +78,7 @@ std::vector<Quadruple> Optimizer::optimize(const std::vector<Quadruple>& quads, 
         labeled_quads.push_back(quads[i]);
     }
 
-    // 3. 更新所有跳转指令，使其指向新创建的标签ID，而不是原始行号
+    // 3. 再次遍历，更新所有跳转指令，使其指向新创建的标签ID，而不是原始行号
     for (auto& q : labeled_quads) {
         if (is_jump_op(q.op)) {
             int target_line = q.result.index;
@@ -89,7 +91,7 @@ std::vector<Quadruple> Optimizer::optimize(const std::vector<Quadruple>& quads, 
         }
     }
 
-    // 从这里开始，所有的优化都基于带有标签的四元式进行
+    // 所有的优化都基于带有标签的四元式进行
     std::vector<Quadruple> optimized_quads = labeled_quads;
     
     // 1. 构建基本块
@@ -98,37 +100,38 @@ std::vector<Quadruple> Optimizer::optimize(const std::vector<Quadruple>& quads, 
     // 2. 计算每个基本块的def和use集合
     compute_def_use_sets(blocks);
     
-    // 3. 计算活跃变量
+    // 3.  进行活跃变量分析，计算每个块出入口的活跃变量，是死代码消除的关键依据
     compute_live_variables(blocks);
     
-    // 4. 对基本块进行优化
+    // 4. 对基本块进行局部优化
     optimized_quads = optimize_basic_blocks(blocks, symbol_table);
 
-    // 5. 重新计算跳转目标
+    // 5. 优化完成后，重新计算跳转目标，将标签转回最终的行号，并移除LABEL伪指令
     recompute_jump_targets(optimized_quads);
     
     return optimized_quads;
 }
-
+    // 在构建块之前，先填充 label_to_block_index 的映射，这在建立后继关系时会用到
+    // （注意：此处的实现是在构建块之后才建立关系，所以映射可以在构建过程中填充，但提前填充思路更清晰）
 std::vector<BasicBlock> Optimizer::build_basic_blocks(const std::vector<Quadruple>& quads) {
     std::vector<BasicBlock> blocks;
     std::map<int, int> label_to_block; // 标签到基本块索引的映射
     
     // 第一步：识别所有基本块的入口
     std::vector<bool> is_block_entry(quads.size(), false);
-    is_block_entry[0] = true; // 第一条指令总是入口
+    is_block_entry[0] = true; // 规则1: 程序的第一条指令总是入口
     
     for (size_t i = 0; i < quads.size(); i++) {
         const Quadruple& quad = quads[i];
         
-        // 如果是跳转指令，下一条指令是入口
+        // 规则2: 跳转指令的下一条指令是入口
         if (is_jump_op(quad.op)) {
             if (i + 1 < quads.size()) {
                 is_block_entry[i + 1] = true;
             }
         }
         
-        // 如果是标签指令，当前指令是入口
+        // 规则3: 标签指令本身是入口 (这是对“跳转目标是入口”的实现)
         if (is_label_op(quad.op)) {
             is_block_entry[i] = true;
         }
@@ -151,19 +154,19 @@ std::vector<BasicBlock> Optimizer::build_basic_blocks(const std::vector<Quadrupl
         }
     }
     
-    // 添加最后一个基本块
+    // 添加循环结束后遗留的最后一个基本块
     if (!current_block.quads.empty()) {
         blocks.push_back(current_block);
     }
     
-    // 第三步：建立基本块之间的连接关系
+    // 第三步：建立基本块之间的连接关系（前驱与后继）
     for (size_t i = 0; i < blocks.size(); i++) {
         const Quadruple& last_quad = blocks[i].quads.back();
         
         if (is_jump_op(last_quad.op)) {
             // 处理跳转指令
             if (last_quad.op == OpCode::JMP) {
-                // 无条件跳转
+                // // 无条件跳转：只有一个后继，即跳转目标块
                 int target_label = last_quad.result.index;
                 if (label_to_block.count(target_label)) {
                     blocks[i].successors.insert(label_to_block[target_label]);
@@ -171,19 +174,21 @@ std::vector<BasicBlock> Optimizer::build_basic_blocks(const std::vector<Quadrupl
                 }
             } else if (last_quad.op == OpCode::JPF) {
                 // 条件跳转
+                // 1. 跳转发生时的目标块
+
                 int target_label = last_quad.result.index;
                 if (label_to_block.count(target_label)) {
                     blocks[i].successors.insert(label_to_block[target_label]);
                     blocks[label_to_block[target_label]].predecessors.insert(i);
                 }
-                // 添加顺序执行的后继
+                //  // 2. 跳转不发生时，顺序执行的下一个块
                 if (i + 1 < blocks.size()) {
                     blocks[i].successors.insert(i + 1);
                     blocks[i + 1].predecessors.insert(i);
                 }
             }
         } else if (i + 1 < blocks.size()) {
-            // 顺序执行
+            // 非跳转指令结尾：后继是顺序的下一个块
             blocks[i].successors.insert(i + 1);
             blocks[i + 1].predecessors.insert(i);
         }
@@ -198,7 +203,7 @@ void Optimizer::compute_def_use_sets(std::vector<BasicBlock>& blocks) {
         block.def.clear();
         std::set<std::string> defined_in_block;
         for (const auto& quad : block.quads) {
-            // Use: a variable is in USE if it's used before it's defined in the block.
+            //// Use: 一个变量在块内被使用，并且在使用前没有在块内被定义，则它属于USE集
             if (quad.arg1.type == Operand::Type::IDENTIFIER || quad.arg1.type == Operand::Type::TEMPORARY) {
                 if (defined_in_block.find(quad.arg1.name) == defined_in_block.end()) {
                     block.use.insert(quad.arg1.name);
@@ -210,7 +215,7 @@ void Optimizer::compute_def_use_sets(std::vector<BasicBlock>& blocks) {
                 }
             }
 
-            // Def: a variable is in DEF if it's defined in the block.
+            // Def: 一个变量在块内被赋值，它就属于DEF集
             if (quad.result.type == Operand::Type::IDENTIFIER || quad.result.type == Operand::Type::TEMPORARY) {
                 block.def.insert(quad.result.name);
                 defined_in_block.insert(quad.result.name);
@@ -224,13 +229,15 @@ void Optimizer::compute_live_variables(std::vector<BasicBlock>& blocks) {
     do {
         changed = false;
         for (auto& block : blocks) {
-            // 计算新的live_out
+            // 计算新的 live_out: live_out[B] = U (S in successors(B)) { live_in[S] }
+            // 一个变量在块B出口是活跃的，当且仅当它在B的某个后继块的入口是活跃的
             std::set<std::string> new_live_out;
             for (int succ : block.successors) {
                 new_live_out.insert(blocks[succ].live_in.begin(), blocks[succ].live_in.end());
             }
             
-            // 计算新的live_in
+            // 计算新的 live_in: live_in[B] = use[B] U (live_out[B] - def[B])
+            // 一个变量在块B入口是活跃的，当且仅当(1)它在B中被使用(use)了，或(2)它在B出口是活跃的且没有在B中被重定义
             std::set<std::string> new_live_in = block.use;
             std::set<std::string> temp;
             std::set_difference(new_live_out.begin(), new_live_out.end(),
@@ -238,7 +245,7 @@ void Optimizer::compute_live_variables(std::vector<BasicBlock>& blocks) {
                               std::inserter(temp, temp.begin()));
             new_live_in.insert(temp.begin(), temp.end());
             
-            // 检查是否有变化
+            // 检查 live_in 或 live_out 是否有变化，如果有，则需要继续迭代
             if (new_live_in != block.live_in || new_live_out != block.live_out) {
                 changed = true;
                 block.live_in = new_live_in;
@@ -252,15 +259,16 @@ std::vector<Quadruple> Optimizer::optimize_basic_blocks(std::vector<BasicBlock>&
     std::vector<Quadruple> optimized_quads;
     
     for (auto& block : blocks) {
-        // 在其他优化之前，先执行局部冗余存储消除
+        // 优化1: 局部冗余存储消除
         eliminate_redundant_stores_in_block(block.quads);
 
-        // 执行临时变量折叠，消除不必要的中间赋值
+        // 优化2: 临时变量折叠
         fold_temps_in_block(block.quads, block.live_out);
 
-        // 1. 常量折叠
+        // 优化3: 常量折叠
         std::vector<Quadruple> optimized_block_quads;
         for (const auto& quad : block.quads) {
+             // 寻找 `op const1, const2, result` 模式
             if (quad.op == OpCode::ADD || quad.op == OpCode::SUB || 
                 quad.op == OpCode::MUL || quad.op == OpCode::DIV) {
                 if (quad.arg1.type == Operand::Type::CONSTANT && 
@@ -293,7 +301,7 @@ std::vector<Quadruple> Optimizer::optimize_basic_blocks(std::vector<BasicBlock>&
             optimized_block_quads.push_back(quad);
         }
         
-        // 2. 复制传播
+        
         std::map<std::string, std::string> copy_map;
         for (const auto& quad : optimized_block_quads) {
             if (quad.op == OpCode::ASSIGN && 
@@ -302,7 +310,7 @@ std::vector<Quadruple> Optimizer::optimize_basic_blocks(std::vector<BasicBlock>&
             }
         }
         
-        // 3. 死代码消除 (通过反向扫描基本块)
+        // 2. 优化4: 死代码消除 (主要针对无用的临时变量)
         std::vector<Quadruple> final_block_quads;
         std::set<std::string> live_vars = block.live_out; // 从块出口的活跃变量开始
 
@@ -319,8 +327,8 @@ std::vector<Quadruple> Optimizer::optimize_basic_blocks(std::vector<BasicBlock>&
                         is_dead = true;
                     }
                 }
-                // 如果结果是用户声明的变量(IDENTIFIER)，我们默认它总是有用的（因为它的最终值可能是程序输出），所以永远不把它当作死代码。
-                // 因此，这里我们只处理TEMPORARY类型，不对IDENTIFIER做任何判断。
+                // 注意：这里我们采取保守策略，不对用户变量(IDENTIFIER)进行死代码消除，
+                // 因为我们假设它们的值可能在程序外部是可见的或有用的。
             }
 
             if (!is_dead) {
@@ -371,7 +379,7 @@ bool Optimizer::is_label_op(OpCode op) {
     return op == OpCode::LABEL;
 }
 
-// 注意：每个函数的定义前都有 Optimizer::，但没有 static
+// 优化5: 常量折叠
 bool Optimizer::constant_folding(std::vector<Quadruple>& quads, SymbolTable& symbol_table) {
     bool changed = false;
     for (auto& q : quads) {
@@ -407,7 +415,7 @@ bool Optimizer::constant_folding(std::vector<Quadruple>& quads, SymbolTable& sym
     }
     return changed;
 }
-
+// 优化6: 公共子表达式消除
 bool Optimizer::eliminate_common_subexpressions(std::vector<Quadruple>& quads) {
     bool changed = false;
     std::unordered_map<Expression, std::string> available_exprs;
@@ -444,7 +452,7 @@ bool Optimizer::eliminate_common_subexpressions(std::vector<Quadruple>& quads) {
     }
     return changed;
 }
-
+// 优化7: 复制传播
 bool Optimizer::copy_propagation(std::vector<Quadruple>& quads) {
     bool changed = false;
     std::unordered_map<std::string, std::string> copies;
@@ -483,7 +491,7 @@ bool Optimizer::copy_propagation(std::vector<Quadruple>& quads) {
     }
     return changed;
 }
-
+// 优化8: 死代码消除
 bool Optimizer::dead_code_elimination(std::vector<Quadruple>& quads, const SymbolTable& symbol_table) {
     std::set<std::string> live_vars;
     
@@ -546,7 +554,7 @@ bool Optimizer::dead_code_elimination(std::vector<Quadruple>& quads, const Symbo
     
     return false;
 }
-
+// 优化9: 重新计算跳转目标
 void Optimizer::recompute_jump_targets(std::vector<Quadruple>& quads) {
     // 步骤 1: 建立一个从标签ID到其当前行号的映射
     std::map<int, int> label_id_to_current_line;

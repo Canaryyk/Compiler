@@ -16,7 +16,8 @@
                 "${workspaceFolder}/src/semantic_analyzer/*.cpp",
                 "${workspaceFolder}/src/optimizer/*.cpp",
                 "-o",
-                "${workspaceFolder}/build/compiler_app.exe"
+                "${workspaceFolder}/build/compiler_app.exe",
+                "${workspaceFolder}/src/target_code_generator/*.cpp"
             ],
             "group": "build",
             "presentation": {
@@ -31,7 +32,7 @@
         {
             "type": "cppbuild",
             "label": "C/C++: g++.exe 生成活动文件",
-            "command": "C:\\mingw64\\bin\\g++.exe",
+            "command": "D:/msys2/ucrt64/bin/g++.exe",
             "args": [
                 "-fdiagnostics-color=always",
                 "-g",
@@ -50,6 +51,15 @@
                 "isDefault": true
             },
             "detail": "调试器生成的任务。"
+        },
+        {
+            "type": "npm",
+            "script": "install",
+            "path": "webview",
+            "group": "clean",
+            "problemMatcher": [],
+            "label": "npm: install - webview",
+            "detail": "install dependencies from package"
         }
     ]
 }
