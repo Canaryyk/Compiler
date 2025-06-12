@@ -11,7 +11,7 @@ app.use(cors());
 app.use(express.json());
 app.use(express.static('public'));
 
-const compilerPath = path.join(__dirname, '..', 'build', 'compiler_app.exe'); // 假设编译器在 build 目录下
+const compilerPath = path.join(__dirname, '..', 'build', 'compiler_app.exe'); 
 const tempCodePath = path.join(__dirname, 'temp_code.tmp');
 
 app.post('/api/compile', (req, res) => {
@@ -36,7 +36,6 @@ app.post('/api/compile', (req, res) => {
         exec(command, (error, stdout, stderr) => {
             if (error) {
                 console.error(`Compiler execution error: ${error.message}`);
-                // 同时返回 stdout 和 stderr，因为编译器可能在 stdout 中输出部分成功的结果，在 stderr 中输出错误信息
                 return res.status(500).json({ error: `Compiler execution failed.`, details: stderr, partial_output: stdout });
             }
             if (stderr) {
@@ -49,7 +48,6 @@ app.post('/api/compile', (req, res) => {
                 res.json(jsonOutput);
             } catch (parseError) {
                 console.error(`JSON parse error: ${parseError.message}`);
-                // 如果 JSON 解析失败，返回原始的 stdout，方便调试
                 res.status(500).json({ error: 'Failed to parse compiler output as JSON.', details: stdout });
             }
         });
