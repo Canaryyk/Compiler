@@ -30,6 +30,10 @@ namespace std {
     };
 }
 
+// 声明一个仅在当前文件可见的辅助函数
+static void eliminate_redundant_stores_in_block(std::vector<Quadruple>& block_quads);
+static void fold_temps_in_block(std::vector<Quadruple>& block_quads, const std::set<std::string>& live_out);
+
 // ===================================================================
 // Optimizer 类静态成员函数的实现
 // ===================================================================
@@ -248,6 +252,12 @@ std::vector<Quadruple> Optimizer::optimize_basic_blocks(std::vector<BasicBlock>&
     std::vector<Quadruple> optimized_quads;
     
     for (auto& block : blocks) {
+        // 在其他优化之前，先执行局部冗余存储消除
+        eliminate_redundant_stores_in_block(block.quads);
+
+        // 执行临时变量折叠，消除不必要的中间赋值
+        fold_temps_in_block(block.quads, block.live_out);
+
         // 1. 常量折叠
         std::vector<Quadruple> optimized_block_quads;
         for (const auto& quad : block.quads) {
@@ -300,14 +310,17 @@ std::vector<Quadruple> Optimizer::optimize_basic_blocks(std::vector<BasicBlock>&
             const auto& quad = *it;
             bool is_dead = false;
 
-            // 具有副作用的指令（如PRINT, CALL）永远不被认为是死代码
-            if (quad.op != OpCode::PRINT && quad.op != OpCode::CALL) { 
-                if (quad.result.type == Operand::Type::IDENTIFIER || quad.result.type == Operand::Type::TEMPORARY) {
-                    // 如果指令的结果变量在此点不是活跃的，则指令是死的
+            // 具有副作用的指令（如PRINT, CALL, JMP等）永远不被认为是死代码
+            if (quad.op != OpCode::PRINT && quad.op != OpCode::CALL && !is_jump_op(quad.op) && quad.op != OpCode::RETURN) {
+                // 如果指令的结果是一个临时变量
+                if (quad.result.type == Operand::Type::TEMPORARY) {
+                    // 并且这个临时变量在此点不是活跃的（即后续不会再被使用），则指令是死的
                     if (live_vars.find(quad.result.name) == live_vars.end()) {
                         is_dead = true;
                     }
                 }
+                // 如果结果是用户声明的变量(IDENTIFIER)，我们默认它总是有用的（因为它的最终值可能是程序输出），所以永远不把它当作死代码。
+                // 因此，这里我们只处理TEMPORARY类型，不对IDENTIFIER做任何判断。
             }
 
             if (!is_dead) {
@@ -579,4 +592,119 @@ void Optimizer::recompute_jump_targets(std::vector<Quadruple>& quads) {
     quads.erase(std::remove_if(quads.begin(), quads.end(), [](const Quadruple& q){
         return q.op == OpCode::LABEL;
     }), quads.end());
+}
+
+void eliminate_redundant_stores_in_block(std::vector<Quadruple>& block_quads) {
+    if (block_quads.empty()) {
+        return;
+    }
+
+    // 记录变量最后一次定义的指令索引，这是潜在的冗余指令
+    std::map<std::string, size_t> last_def_index;
+    std::vector<bool> is_redundant(block_quads.size(), false);
+
+    for (size_t i = 0; i < block_quads.size(); ++i) {
+        auto& q = block_quads[i];
+
+        // 任何对变量的读取，都会使上一次对它的赋值变得必要，不再是冗余的
+        if (q.arg1.type == Operand::Type::IDENTIFIER) {
+            last_def_index.erase(q.arg1.name);
+        }
+        if (q.arg2.type == Operand::Type::IDENTIFIER) {
+            last_def_index.erase(q.arg2.name);
+        }
+
+        // 函数调用可能会以我们无法看到的方式使用任何变量，为安全起见，我们认为所有待定冗余赋值都变得必要
+        if (q.op == OpCode::CALL) {
+            last_def_index.clear();
+        }
+
+        // 检查对非临时变量的定义
+        if (q.result.type == Operand::Type::IDENTIFIER) {
+            if (last_def_index.count(q.result.name)) {
+                // 找到了！前一个对该变量的赋值指令没有被使用过，因此是冗余的
+                is_redundant[last_def_index.at(q.result.name)] = true;
+            }
+            // 记录当前这次赋值，作为下一次潜在的冗余指令
+            last_def_index[q.result.name] = i;
+        }
+    }
+    
+    // 根据标记，构建新的四元式列表，排除所有冗余指令
+    std::vector<Quadruple> new_quads;
+    new_quads.reserve(block_quads.size());
+    for (size_t i = 0; i < block_quads.size(); ++i) {
+        if (!is_redundant[i]) {
+            new_quads.push_back(block_quads[i]);
+        }
+    }
+    block_quads = std::move(new_quads);
+}
+
+static void fold_temps_in_block(std::vector<Quadruple>& block_quads, const std::set<std::string>& live_out) {
+    if (block_quads.empty()) {
+        return;
+    }
+    
+    std::vector<Quadruple> final_quads;
+    final_quads.reserve(block_quads.size());
+    std::set<std::string> live_vars = live_out;
+
+    // 从后向前扫描基本块
+    for (int i = block_quads.size() - 1; i >= 0; --i) {
+        const auto& current_quad = block_quads[i];
+
+        // 寻找模式: var := temp
+        if (current_quad.op == OpCode::ASSIGN &&
+            current_quad.arg1.type == Operand::Type::TEMPORARY &&
+            current_quad.arg2.name.empty() &&
+            // 安全性检查：temp在这次赋值后，就不再是活跃变量
+            live_vars.find(current_quad.arg1.name) == live_vars.end() &&
+            i > 0)
+        {
+            const std::string& temp_name = current_quad.arg1.name;
+            const auto& prev_quad = block_quads[i-1];
+
+            // 检查前一条指令是否是 temp := op arg1 arg2
+            if ((prev_quad.op == OpCode::ADD || prev_quad.op == OpCode::SUB || prev_quad.op == OpCode::MUL || prev_quad.op == OpCode::DIV) &&
+                prev_quad.result.type == Operand::Type::TEMPORARY && 
+                prev_quad.result.name == temp_name) 
+            {
+                // 找到了可以合并的模式！
+                Quadruple folded_quad = prev_quad;
+                folded_quad.result = current_quad.result; // 将结果直接赋给最终变量
+                final_quads.push_back(folded_quad);
+                
+                // 更新活跃变量集合，就好像我们处理的是合并后的指令
+                if(folded_quad.result.type == Operand::Type::IDENTIFIER || folded_quad.result.type == Operand::Type::TEMPORARY) {
+                    live_vars.erase(folded_quad.result.name);
+                }
+                if(folded_quad.arg1.type == Operand::Type::IDENTIFIER || folded_quad.arg1.type == Operand::Type::TEMPORARY) {
+                    live_vars.insert(folded_quad.arg1.name);
+                }
+                if(folded_quad.arg2.type == Operand::Type::IDENTIFIER || folded_quad.arg2.type == Operand::Type::TEMPORARY) {
+                    live_vars.insert(folded_quad.arg2.name);
+                }
+                
+                i--; // 跳过已经被合并的前一条指令
+                continue;
+            }
+        }
+        
+        final_quads.push_back(current_quad);
+        
+        // 为下一次迭代，正常更新活跃变量集合
+        if (current_quad.result.type == Operand::Type::IDENTIFIER || current_quad.result.type == Operand::Type::TEMPORARY) {
+            live_vars.erase(current_quad.result.name);
+        }
+        if (current_quad.arg1.type == Operand::Type::IDENTIFIER || current_quad.arg1.type == Operand::Type::TEMPORARY) {
+            live_vars.insert(current_quad.arg1.name);
+        }
+        if (current_quad.arg2.type == Operand::Type::IDENTIFIER || current_quad.arg2.type == Operand::Type::TEMPORARY) {
+            live_vars.insert(current_quad.arg2.name);
+        }
+    }
+    
+    std::reverse(final_quads.begin(), final_quads.end());
+    block_quads = std::move(final_quads);
 }

@@ -426,48 +426,9 @@ void Parser::assignment_statement() {
 
     Operand left = {Operand::Type::IDENTIFIER, left_entry->address, left_entry->name};
 
-    // +++ 集成常量折叠优化 +++
-    // 检查：如果 expression() 的结果是一个临时变量，并且上一条指令是对这个临时变量的赋值
-    if (right.type == Operand::Type::TEMPORARY && !quadruples.empty()) {
-        Quadruple& last_quad = quadruples.back();
-        
-        // 模式一：上一条是 t_i := const1 op const2 (例如 t0 := 0.5 + 0.5)
-        if (last_quad.result.name == right.name &&
-            (last_quad.op == OpCode::ADD || last_quad.op == OpCode::SUB || last_quad.op == OpCode::MUL || last_quad.op == OpCode::DIV) &&
-            last_quad.arg1.type == Operand::Type::CONSTANT &&
-            last_quad.arg2.type == Operand::Type::CONSTANT)
-        {
-            // 在这里当场进行常量折叠！
-            double v1 = table.get_constant_table()[last_quad.arg1.index];
-            double v2 = table.get_constant_table()[last_quad.arg2.index];
-            double result_val;
-            switch (last_quad.op) {
-                case OpCode::ADD: result_val = v1 + v2; break;
-                case OpCode::SUB: result_val = v1 - v2; break;
-                case OpCode::MUL: result_val = v1 * v2; break;
-                case OpCode::DIV: result_val = (v2 != 0) ? v1 / v2 : 0; break; // 注意处理除以零
-                default: result_val = 0; // 不应发生
-            }
-            
-            // 直接修改上一条指令，把它变成一条干净的赋值指令 left := result_val
-            int const_index = table.lookup_or_add_constant(result_val);
-            last_quad.op = OpCode::ASSIGN;
-            last_quad.arg1 = { Operand::Type::CONSTANT, const_index, std::to_string(result_val) };
-            last_quad.arg2 = {};
-            last_quad.result = left;
-            return;
-        } 
-        // 模式二：上一条是 t_i := some_variable
-        else if (last_quad.result.name == right.name &&
-                 last_quad.op == OpCode::ASSIGN)
-        {
-            // 直接修改上一条指令，让它直接赋值给目标变量
-            last_quad.result = left;
-            return;
-        }
-    } 
-
-    // 如果不匹配任何优化模式，或 expression() 返回的不是临时变量，则按原样生成赋值指令
+    // 移除在Parser中进行的即时优化（常量折叠和拷贝传播）。
+    // 优化工作将完全交由Optimizer模块处理。
+    // 按原样生成赋值指令，将表达式的结果赋给左侧变量。
     emit(OpCode::ASSIGN, right, {}, left);
 }
 
