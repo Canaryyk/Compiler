@@ -41,6 +41,7 @@ private:
     static std::string get_operand_name(const Operand& op, const SymbolTable& symbol_table);
     static bool is_jump_op(OpCode op);
     static bool is_label_op(OpCode op);
+     static void recompute_jump_targets(std::vector<Quadruple>& quads);
 };
 
 #endif // OPTIMIZER_H

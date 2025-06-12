@@ -35,7 +35,58 @@ namespace std {
 // ===================================================================
 
 std::vector<Quadruple> Optimizer::optimize(const std::vector<Quadruple>& quads, SymbolTable& symbol_table) {
-    std::vector<Quadruple> optimized_quads = quads;
+    if (quads.empty()) {
+        return {};
+    }
+
+    // 步骤 0: 将基于行号的跳转转换为基于标签的跳转，使优化更安全
+    std::vector<Quadruple> labeled_quads;
+    labeled_quads.reserve(quads.size() * 1.2); // 预留空间，避免多次重分配
+    std::map<int, int> line_to_label_id;
+    int next_label_id = 0;
+
+    // 1. 找出所有被跳转指令引用的行号
+    std::set<int> jump_target_lines;
+    for (const auto& q : quads) {
+        if (is_jump_op(q.op)) {
+            jump_target_lines.insert(q.result.index);
+        }
+    }
+    
+    // 2. 为作为跳转目标的行生成LABEL指令，并记录行号到标签ID的映射
+    for (size_t i = 0; i < quads.size(); ++i) {
+        if (jump_target_lines.count(i)) {
+            if (line_to_label_id.find(i) == line_to_label_id.end()) {
+                line_to_label_id[i] = next_label_id;
+                
+                Quadruple label_quad;
+                label_quad.op = OpCode::LABEL;
+                label_quad.result.type = Operand::Type::LABEL;
+                label_quad.result.index = next_label_id;
+                // 为了方便调试，我们给标签一个名字
+                label_quad.result.name = "L" + std::to_string(next_label_id);
+                labeled_quads.push_back(label_quad);
+                next_label_id++;
+            }
+        }
+        labeled_quads.push_back(quads[i]);
+    }
+
+    // 3. 更新所有跳转指令，使其指向新创建的标签ID，而不是原始行号
+    for (auto& q : labeled_quads) {
+        if (is_jump_op(q.op)) {
+            int target_line = q.result.index;
+            if (line_to_label_id.count(target_line)) {
+                int label_id = line_to_label_id[target_line];
+                q.result.type = Operand::Type::LABEL; // 类型变更为标签
+                q.result.index = label_id;
+                q.result.name = "L" + std::to_string(label_id);
+            }
+        }
+    }
+
+    // 从这里开始，所有的优化都基于带有标签的四元式进行
+    std::vector<Quadruple> optimized_quads = labeled_quads;
     
     // 1. 构建基本块
     std::vector<BasicBlock> blocks = build_basic_blocks(optimized_quads);
@@ -48,6 +99,9 @@ std::vector<Quadruple> Optimizer::optimize(const std::vector<Quadruple>& quads, 
     
     // 4. 对基本块进行优化
     optimized_quads = optimize_basic_blocks(blocks, symbol_table);
+
+    // 5. 重新计算跳转目标
+    recompute_jump_targets(optimized_quads);
     
     return optimized_quads;
 }
@@ -470,4 +524,59 @@ bool Optimizer::dead_code_elimination(std::vector<Quadruple>& quads, const Symbo
     }
     
     return false;
+}
+
+void Optimizer::recompute_jump_targets(std::vector<Quadruple>& quads) {
+    // 步骤 1: 建立一个从标签ID到其当前行号的映射
+    std::map<int, int> label_id_to_current_line;
+    for (size_t i = 0; i < quads.size(); ++i) {
+        if (quads[i].op == OpCode::LABEL) {
+            label_id_to_current_line[quads[i].result.index] = i;
+        }
+    }
+
+    // 步骤 2: 计算如果移除LABEL指令后，每一行的最终新行号会是多少。
+    // `labels_before[i]` 表示第 i 行之前（不包括第i行）有多少个LABEL指令。
+    std::vector<int> labels_before(quads.size() + 1, 0);
+    for (size_t i = 0; i < quads.size(); ++i) {
+        labels_before[i+1] = labels_before[i];
+        if (quads[i].op == OpCode::LABEL) {
+            labels_before[i+1]++;
+        }
+    }
+    
+    // 计算移除所有LABEL后，最终代码的指令总数。
+    const int final_quad_count = quads.size() - labels_before.back();
+
+    // 步骤 3: 遍历所有四元式，修正跳转指令的目标
+    for (auto& q : quads) {
+        if (is_jump_op(q.op)) {
+            // 获取跳转目标的标签ID
+            int label_id = q.result.index; 
+
+            if (label_id_to_current_line.count(label_id)) {
+                // 获取标签所在的原始行（带LABEL）
+                int target_line_with_labels = label_id_to_current_line[label_id];
+                
+                // 计算标签所在行之前有多少个LABEL。
+                int num_labels_before_target = labels_before[target_line_with_labels];
+                
+                // 最终的目标行号 = 原始目标行号 - 前面的LABEL数量
+                int final_target_line = target_line_with_labels - num_labels_before_target;
+                
+                q.result.index = final_target_line;
+                q.result.name = std::to_string(final_target_line);
+            } else {
+                // 如果在标签映射表中找不到，这很可能是一个指向原始程序末尾的跳转。
+                // 我们将其目标修正为优化后代码的末尾。
+                q.result.index = final_quad_count;
+                q.result.name = std::to_string(final_quad_count);
+            }
+        }
+    }
+
+    // 步骤 4: 移除所有LABEL伪指令，得到最终干净的代码
+    quads.erase(std::remove_if(quads.begin(), quads.end(), [](const Quadruple& q){
+        return q.op == OpCode::LABEL;
+    }), quads.end());
 }
