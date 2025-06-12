@@ -94,7 +94,7 @@ inline std::string operand_to_string_for_json(const Operand& op, const SymbolTab
             }
             break;
         case Operand::Type::LABEL:
-            ss << op.index;
+            ss << op.name; // Use name for labels for better readability
             break;
         default:
              ss << "-";
@@ -124,15 +124,36 @@ struct Quadruple {
 // JSON serialization for a vector of Quads, tailored for the frontend
 inline void to_json(nlohmann::json& j, const std::vector<Quadruple>& quads, const SymbolTable& table) {
     j = nlohmann::json::array();
-    for(size_t i = 0; i < quads.size(); ++i) {
-        const auto& q = quads[i];
-        j.push_back({
-            {"line", i},
-            {"op", opcode_to_string(q.op)},
-            {"arg1", operand_to_string_for_json(q.arg1, table)},
-            {"arg2", operand_to_string_for_json(q.arg2, table)},
-            {"result", operand_to_string_for_json(q.result, table)}
-        });
+    size_t line_counter = 0;
+    for(const auto& q : quads) {
+        if (q.op == OpCode::LABEL && q.result.index == -1) {
+            // 对于分隔符，生成一个行号为空字符串的特殊JSON对象，以避免显示 "undefined"
+            j.push_back({
+                {"line", ""},
+                {"op", q.result.name},
+                {"arg1", ""},
+                {"arg2", ""},
+                {"result", ""}
+            });
+        } else if (q.op == OpCode::LABEL) {
+            // 对真正的标签进行格式化
+            j.push_back({
+                {"line", line_counter++},
+                {"op", opcode_to_string(q.op)},
+                {"arg1", "-"},
+                {"arg2", "-"},
+                {"result", q.result.name}
+            });
+        } else {
+            // 对所有其他常规四元式进行格式化
+            j.push_back({
+                {"line", line_counter++},
+                {"op", opcode_to_string(q.op)},
+                {"arg1", operand_to_string_for_json(q.arg1, table)},
+                {"arg2", operand_to_string_for_json(q.arg2, table)},
+                {"result", operand_to_string_for_json(q.result, table)}
+            });
+        }
     }
 }
 

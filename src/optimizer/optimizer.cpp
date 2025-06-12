@@ -350,6 +350,14 @@ std::vector<Quadruple> Optimizer::optimize_basic_blocks(std::vector<BasicBlock>&
         optimized_quads.insert(optimized_quads.end(), 
                              final_block_quads.begin(), 
                              final_block_quads.end());
+
+        // 为每个基本块添加一个可视化的分隔符
+        Quadruple separator_quad;
+        separator_quad.op = OpCode::LABEL;
+        separator_quad.result.type = Operand::Type::LABEL;
+        separator_quad.result.index = -1; // 特殊索引，用于与普通标签区分
+        separator_quad.result.name = "======== Basic Block Separator ========";
+        optimized_quads.push_back(separator_quad);
     }
     
     return optimized_quads;
@@ -543,7 +551,8 @@ void Optimizer::recompute_jump_targets(std::vector<Quadruple>& quads) {
     // 步骤 1: 建立一个从标签ID到其当前行号的映射
     std::map<int, int> label_id_to_current_line;
     for (size_t i = 0; i < quads.size(); ++i) {
-        if (quads[i].op == OpCode::LABEL) {
+        // 忽略作为分隔符的特殊LABEL
+        if (quads[i].op == OpCode::LABEL && quads[i].result.index != -1) {
             label_id_to_current_line[quads[i].result.index] = i;
         }
     }
@@ -553,12 +562,13 @@ void Optimizer::recompute_jump_targets(std::vector<Quadruple>& quads) {
     std::vector<int> labels_before(quads.size() + 1, 0);
     for (size_t i = 0; i < quads.size(); ++i) {
         labels_before[i+1] = labels_before[i];
-        if (quads[i].op == OpCode::LABEL) {
+        // 忽略作为分隔符的特殊LABEL
+        if (quads[i].op == OpCode::LABEL && quads[i].result.index != -1) {
             labels_before[i+1]++;
         }
     }
     
-    // 计算移除所有LABEL后，最终代码的指令总数。
+    // 计算移除所有真实LABEL后，最终代码的指令总数。
     const int final_quad_count = quads.size() - labels_before.back();
 
     // 步骤 3: 遍历所有四元式，修正跳转指令的目标
@@ -588,9 +598,9 @@ void Optimizer::recompute_jump_targets(std::vector<Quadruple>& quads) {
         }
     }
 
-    // 步骤 4: 移除所有LABEL伪指令，得到最终干净的代码
+    // 步骤 4: 移除所有真实的LABEL伪指令，但保留作为分隔符的特殊LABEL
     quads.erase(std::remove_if(quads.begin(), quads.end(), [](const Quadruple& q){
-        return q.op == OpCode::LABEL;
+        return q.op == OpCode::LABEL && q.result.index != -1;
     }), quads.end());
 }
 

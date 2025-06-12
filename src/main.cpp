@@ -49,7 +49,7 @@ int main(int argc, char* argv[]) {
     // 2. 读取输入文件
     std::ifstream file_stream(input_file);
     if (!file_stream) {
-        std::cerr << "Error: Cannot open file " << input_file << std::endl;
+        std::cerr << "错误：无法打开文件 " << input_file << std::endl;
         return 1;
     }
     std::stringstream buffer;
@@ -88,7 +88,7 @@ int main(int argc, char* argv[]) {
                 json_output = symbol_table.to_json(); // 使用 SymbolTable 的 to_json 方法
             }
         } else {
-            std::cerr << "Error: Invalid target '" << target << "'" << std::endl;
+            std::cerr << "错误：无效的目标 '" << target << "'" << std::endl;
             print_usage();
             return 1;
         }
@@ -97,7 +97,7 @@ int main(int argc, char* argv[]) {
         std::cout << json_output.dump(4) << std::endl;
 
     } catch (const std::exception& e) {
-        std::cerr << "An error occurred: " << e.what() << std::endl;
+        std::cerr << "发生错误： " << e.what() << std::endl;
         return 1;
     }
 
