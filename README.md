@@ -1,7 +1,4 @@
 # Simple Compiler
-https://sf.342242.icu/api/v1/client/subscribe?token=285a67d0fd38d2be0f31df652a35f255
-./FlClash*.AppImage --appimage-extract
-./squashfs-root/AppRun
 这是一个基于C++实现的简单编译器项目。
 
 ## 文法产生式
